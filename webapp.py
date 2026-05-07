@@ -4,7 +4,7 @@ import psycopg2
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect
 from functools import wraps
 from apscheduler.schedulers.background import BackgroundScheduler
 import uuid
