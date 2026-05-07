@@ -1,7 +1,6 @@
 import os
 import jwt
-import asyncpg
-import asyncio
+import psycopg2
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -22,56 +21,41 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -------------------- Async database helpers --------------------
-async def get_db_connection():
-    return await asyncpg.connect(DATABASE_URL)
+# -------------------- Database helpers (psycopg2) --------------------
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
 
-def run_async(coro):
-    """Run an async coroutine synchronously (for Flask routes)."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+def db_fetch_one(query, params=()):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row
 
-def db_fetch_one(query, *params):
-    async def fetch():
-        conn = await get_db_connection()
+def db_fetch_all(query, params=()):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+def db_execute(query, params=(), fetch_id=False):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    if fetch_id:
         try:
-            row = await conn.fetchrow(query, *params)
-            return row
-        finally:
-            await conn.close()
-    return run_async(fetch())
-
-def db_fetch_all(query, *params):
-    async def fetch():
-        conn = await get_db_connection()
-        try:
-            rows = await conn.fetch(query, *params)
-            return rows
-        finally:
-            await conn.close()
-    return run_async(fetch())
-
-def db_execute(query, *params, fetch_id=False):
-    async def execute():
-        conn = await get_db_connection()
-        try:
-            async with conn.transaction():
-                result = await conn.execute(query, *params)
-                if fetch_id:
-                    # For INSERT RETURNING id
-                    row = await conn.fetchrow(query + " RETURNING id", *params)
-                    return row[0] if row else None
-                return True
-        except Exception as e:
-            logger.error(f"DB execute error: {e}")
-            return False
-        finally:
-            await conn.close()
-    return run_async(execute())
+            id = cur.fetchone()[0]
+        except:
+            id = None
+    conn.commit()
+    cur.close()
+    conn.close()
+    return id if fetch_id else True
 
 # -------------------- Authentication decorator --------------------
 def require_auth(f):
@@ -104,7 +88,7 @@ def recovery():
 @app.route("/api/user/me", methods=["GET"])
 @require_auth
 def get_user():
-    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications FROM users WHERE user_id = $1", request.user_id)
+    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications FROM users WHERE user_id = %s", (request.user_id,))
     if not row:
         return jsonify({"error": "User not found"}), 404
     return jsonify({
@@ -120,9 +104,9 @@ def get_user():
 @require_auth
 def checkin():
     data = request.json
-    status = data.get("status")  # 'yes', 'no', 'struggled'
+    status = data.get("status")
     today = datetime.now().date()
-    last_row = db_fetch_one("SELECT recovery_last_checkin FROM users WHERE user_id = $1", request.user_id)
+    last_row = db_fetch_one("SELECT recovery_last_checkin FROM users WHERE user_id = %s", (request.user_id,))
     last = last_row[0] if last_row else None
     if last == today:
         return jsonify({"error": "Already checked in today"}), 400
@@ -130,14 +114,14 @@ def checkin():
     streak = 0
     if status == "yes":
         if last and (today - last).days == 1:
-            cur_streak = db_fetch_one("SELECT recovery_streak FROM users WHERE user_id = $1", request.user_id)[0]
+            cur_streak = db_fetch_one("SELECT recovery_streak FROM users WHERE user_id = %s", (request.user_id,))[0]
             streak = cur_streak + 1
         else:
             streak = 1
     else:
         streak = 0
 
-    db_execute("UPDATE users SET recovery_streak = $1, recovery_last_checkin = $2 WHERE user_id = $3", streak, today, request.user_id)
+    db_execute("UPDATE users SET recovery_streak = %s, recovery_last_checkin = %s WHERE user_id = %s", (streak, today, request.user_id))
     return jsonify({"streak": streak})
 
 @app.route("/api/daily-verse", methods=["GET"])
@@ -159,18 +143,18 @@ def save_reflection():
     verse = data.get("verse_text")
     reflection = data.get("reflection_text")
     voice_url = data.get("voice_file_url")
-    db_execute("INSERT INTO recovery_reflections (user_id, verse_text, reflection_text, voice_file_url) VALUES ($1, $2, $3, $4)",
-               request.user_id, verse, reflection, voice_url)
+    db_execute("INSERT INTO recovery_reflections (user_id, verse_text, reflection_text, voice_file_url) VALUES (%s, %s, %s, %s)",
+               (request.user_id, verse, reflection, voice_url))
     return jsonify({"success": True})
 
 @app.route("/api/mentor/messages", methods=["GET"])
 @require_auth
 def get_messages():
-    mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = $1 OR mentor_id = $1 AND status = 'active'", request.user_id)
+    mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s OR mentor_id = %s AND status = 'active'", (request.user_id, request.user_id))
     if not mentor_row:
         return jsonify([])
     mentorship_id = mentor_row[0]
-    rows = db_fetch_all("SELECT sender_id, content, timestamp FROM recovery_messages WHERE mentorship_id = $1 ORDER BY timestamp", mentorship_id)
+    rows = db_fetch_all("SELECT sender_id, content, timestamp FROM recovery_messages WHERE mentorship_id = %s ORDER BY timestamp", (mentorship_id,))
     messages = []
     for r in rows:
         messages.append({"sender_id": r[0], "content": r[1], "timestamp": str(r[2])})
@@ -182,14 +166,14 @@ def send_message():
     data = request.json
     receiver_id = data.get("receiver_id")
     content = data.get("content")
-    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = $1 AND mentor_id = $2) OR (user_id = $2 AND mentor_id = $1)",
-                               request.user_id, receiver_id)
+    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s AND mentor_id = %s) OR (user_id = %s AND mentor_id = %s)",
+                               (request.user_id, receiver_id, receiver_id, request.user_id))
     if not mentorship:
         return jsonify({"error": "No active mentorship"}), 400
     mentorship_id = mentorship[0]
-    db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES ($1, $2, $3, $4)",
-               mentorship_id, request.user_id, receiver_id, content)
-    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = $1", receiver_id)
+    db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES (%s, %s, %s, %s)",
+               (mentorship_id, request.user_id, receiver_id, content))
+    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s", (receiver_id,))
     if user_row and user_row[1]:
         send_telegram_notification(receiver_id, f"📩 New message from your mentor/mentee in the Recovery App.\n\nTap to open: {RENDER_URL}/recovery?token={generate_token(receiver_id)}")
     return jsonify({"success": True})
@@ -206,7 +190,7 @@ def get_sessions():
 @app.route("/api/sessions", methods=["POST"])
 @require_auth
 def create_session():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = $1", request.user_id)
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
     if user[0] not in ('mentor', 'admin'):
         return jsonify({"error": "Only mentors can create sessions"}), 403
     data = request.json
@@ -214,14 +198,14 @@ def create_session():
     description = data.get("description")
     scheduled_time = data.get("scheduled_time")
     jitsi_room = f"recovery-{uuid.uuid4().hex[:8]}"
-    db_execute("INSERT INTO recovery_live_sessions (title, description, host_id, scheduled_time, jitsi_room) VALUES ($1, $2, $3, $4, $5)",
-               title, description, request.user_id, scheduled_time, jitsi_room)
+    db_execute("INSERT INTO recovery_live_sessions (title, description, host_id, scheduled_time, jitsi_room) VALUES (%s, %s, %s, %s, %s)",
+               (title, description, request.user_id, scheduled_time, jitsi_room))
     return jsonify({"success": True, "room": jitsi_room})
 
 @app.route("/api/sessions/<int:session_id>/join", methods=["GET"])
 @require_auth
 def join_session(session_id):
-    row = db_fetch_one("SELECT jitsi_room FROM recovery_live_sessions WHERE id = $1", session_id)
+    row = db_fetch_one("SELECT jitsi_room FROM recovery_live_sessions WHERE id = %s", (session_id,))
     if not row:
         return jsonify({"error": "Session not found"}), 404
     return jsonify({"jitsi_url": f"https://meet.jit.si/{row[0]}"})
@@ -229,17 +213,17 @@ def join_session(session_id):
 @app.route("/api/mentees", methods=["GET"])
 @require_auth
 def get_mentees():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = $1", request.user_id)
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
     if user[0] != 'mentor':
         return jsonify({"error": "Only mentors can view mentees"}), 403
-    rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = $1 AND m.status = 'active'", request.user_id)
+    rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = %s AND m.status = 'active'", (request.user_id,))
     mentees = [{"id": r[0], "name": r[1], "streak": r[2]} for r in rows]
     return jsonify(mentees)
 
 @app.route("/api/admin/users", methods=["GET"])
 @require_auth
 def admin_users():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = $1", request.user_id)
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
     rows = db_fetch_all("SELECT user_id, anonymous_name, recovery_role FROM users")
@@ -249,21 +233,21 @@ def admin_users():
 @app.route("/api/admin/assign-mentor", methods=["POST"])
 @require_auth
 def assign_mentor():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = $1", request.user_id)
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
     data = request.json
     mentee_id = data.get("user_id")
     mentor_id = data.get("mentor_id")
-    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = $1 AND mentor_id = $2", mentee_id, mentor_id)
+    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s AND mentor_id = %s", (mentee_id, mentor_id))
     if not exists:
-        db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES ($1, $2, 'active')", mentee_id, mentor_id)
+        db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES (%s, %s, 'active')", (mentee_id, mentor_id))
     return jsonify({"success": True})
 
 @app.route("/api/admin/broadcast", methods=["POST"])
 @require_auth
 def broadcast():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = $1", request.user_id)
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
     data = request.json
@@ -289,7 +273,7 @@ def send_telegram_notification(chat_id, text):
 def check_upcoming_sessions():
     now = datetime.now()
     reminder_time = now + timedelta(minutes=15)
-    rows = db_fetch_all("SELECT id, title, scheduled_time, jitsi_room FROM recovery_live_sessions WHERE scheduled_time BETWEEN $1 AND $2", now, reminder_time)
+    rows = db_fetch_all("SELECT id, title, scheduled_time, jitsi_room FROM recovery_live_sessions WHERE scheduled_time BETWEEN %s AND %s", (now, reminder_time))
     for row in rows:
         users = db_fetch_all("SELECT user_id FROM users WHERE recovery_notifications = TRUE")
         for u in users:
