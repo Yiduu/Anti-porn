@@ -270,19 +270,32 @@ def send_telegram_notification(chat_id, text):
         logger.error(f"Failed to send notification to {chat_id}: {e}")
 
 # -------------------- Session reminder scheduler --------------------
+# -------------------- Session reminder scheduler --------------------
 def check_upcoming_sessions():
-    now = datetime.now()
-    reminder_time = now + timedelta(minutes=15)
-    rows = db_fetch_all("SELECT id, title, scheduled_time, jitsi_room FROM recovery_live_sessions WHERE scheduled_time BETWEEN %s AND %s", (now, reminder_time))
-    for row in rows:
+    try:
+        now = datetime.now()
+        reminder_time = now + timedelta(minutes=15)
+        rows = db_fetch_all(
+            "SELECT id, title, scheduled_time, jitsi_room FROM recovery_live_sessions WHERE scheduled_time BETWEEN %s AND %s",
+            (now, reminder_time)
+        )
+        if not rows:
+            return
         users = db_fetch_all("SELECT user_id FROM users WHERE recovery_notifications = TRUE")
-        for u in users:
-            msg = f"🔔 Live session in 15 minutes!\n\nTitle: {row[1]}\nJoin: {RENDER_URL}/recovery/sessions/{row[0]}"
-            send_telegram_notification(u[0], msg)
+        for row in rows:
+            for u in users:
+                msg = f"🔔 Live session in 15 minutes!\n\nTitle: {row[1]}\nJoin: {RENDER_URL}/recovery/sessions/{row[0]}"
+                send_telegram_notification(u[0], msg)
+    except Exception as e:
+        logger.error(f"Error in check_upcoming_sessions: {e}")
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=check_upcoming_sessions, trigger="interval", minutes=1)
-scheduler.start()
+try:
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=check_upcoming_sessions, trigger="interval", minutes=1)
+    scheduler.start()
+    logger.info("✅ Session reminder scheduler started.")
+except Exception as e:
+    logger.error(f"❌ Failed to start scheduler: {e}")
 
 # -------------------- Run Flask --------------------
 if __name__ == "__main__":
