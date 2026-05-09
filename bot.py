@@ -27,11 +27,11 @@ def register_user(user_id, username):
         conn = get_db_connection()
         cur = conn.cursor()
         # Check if user exists
-        cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+        cur.execute("SELECT user_id FROM users WHERE user_id = %s::bigint", (user_id,))
         if not cur.fetchone():
             anonymous_name = username if username else f"Warrior_{str(user_id)[-4:]}"
             cur.execute(
-                "INSERT INTO users (user_id, anonymous_name, recovery_role) VALUES (%s, %s, %s)",
+                "INSERT INTO users (user_id, anonymous_name, recovery_role) VALUES (%s::bigint, %s, %s)",
                 (user_id, anonymous_name, 'user')
             )
             conn.commit()
