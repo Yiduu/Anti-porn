@@ -159,12 +159,21 @@ def save_reflection():
 @app.route("/api/mentor/messages", methods=["GET"])
 @require_auth
 def get_messages():
+    # Find active mentorship where user is either mentee or mentor
     mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s OR mentor_id = %s) AND status = 'active'", (request.user_id, request.user_id))
     if not mentor_row:
         return jsonify([])
     mentorship_id = mentor_row[0]
     rows = db_fetch_all("SELECT sender_id, content, timestamp FROM recovery_messages WHERE mentorship_id = %s ORDER BY timestamp", (mentorship_id,))
-    messages = [{"sender_id": r[0], "content": r[1], "timestamp": str(r[2])} for r in rows]
+    
+    # Get names for display
+    user_names = {}
+    all_sender_ids = list(set([r[0] for r in rows]))
+    if all_sender_ids:
+        name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id IN %s", (tuple(all_sender_ids),))
+        user_names = {r[0]: r[1] for r in name_rows}
+
+    messages = [{"sender_id": r[0], "sender_name": user_names.get(r[0], "Unknown"), "content": r[1], "timestamp": str(r[2])} for r in rows]
     return jsonify(messages)
 
 @app.route("/api/mentor/message", methods=["POST"])
@@ -234,6 +243,34 @@ def admin_users():
     rows = db_fetch_all("SELECT user_id, anonymous_name, recovery_role FROM users")
     users = [{"id": r[0], "name": r[1], "role": r[2]} for r in rows]
     return jsonify(users)
+
+@app.route("/api/user/update", methods=["POST"])
+@require_auth
+def update_profile():
+    data = request.json
+    name = data.get("name")
+    bio = data.get("bio")
+    db_execute("UPDATE users SET anonymous_name = %s, bio = %s WHERE user_id = %s", (name, bio, request.user_id))
+    return jsonify({"success": True})
+
+@app.route("/api/admin/init-db", methods=["GET"])
+def init_db():
+    # Simple guard: check for a secret key in args
+    if request.args.get("key") != app.secret_key:
+        return "Unauthorized", 401
+    try:
+        schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
+        with open(schema_path, "r") as f:
+            schema = f.read()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(schema)
+        conn.commit()
+        cur.close()
+        conn.close()
+        return "Database initialized successfully", 200
+    except Exception as e:
+        return f"Error: {e}", 500
 
 @app.route("/api/admin/assign-mentor", methods=["POST"])
 @require_auth
