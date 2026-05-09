@@ -501,8 +501,8 @@
             currentChatId = menteeId;
             document.getElementById("chat-title").innerText = menteeName;
             
-            // Show video call button only for mentors
-            if (userRole === 'mentor') {
+            // Show video call button for mentors and admins
+            if (userRole === 'mentor' || userRole === 'admin') {
                 document.getElementById("video-call-btn").style.display = "block";
             } else {
                 document.getElementById("video-call-btn").style.display = "none";
