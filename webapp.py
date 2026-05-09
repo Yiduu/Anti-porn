@@ -43,6 +43,34 @@ def db_fetch_all(query, params=()):
     conn.close()
     return rows
 
+def init_db_types():
+    """Migrate all ID columns to TEXT to avoid type mismatch issues."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Migrate users table
+        cur.execute("ALTER TABLE users ALTER COLUMN user_id TYPE TEXT USING user_id::text")
+        # Migrate reflections
+        cur.execute("ALTER TABLE recovery_reflections ALTER COLUMN user_id TYPE TEXT USING user_id::text")
+        # Migrate mentorships
+        cur.execute("ALTER TABLE recovery_mentorships ALTER COLUMN user_id TYPE TEXT USING user_id::text")
+        cur.execute("ALTER TABLE recovery_mentorships ALTER COLUMN mentor_id TYPE TEXT USING mentor_id::text")
+        # Migrate messages
+        cur.execute("ALTER TABLE recovery_messages ALTER COLUMN sender_id TYPE TEXT USING sender_id::text")
+        cur.execute("ALTER TABLE recovery_messages ALTER COLUMN receiver_id TYPE TEXT USING receiver_id::text")
+        # Migrate sessions
+        cur.execute("ALTER TABLE recovery_live_sessions ALTER COLUMN host_id TYPE TEXT USING host_id::text")
+        
+        conn.commit()
+        logger.info("✅ Database migration to TEXT IDs successful.")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"⚠️ Database migration note: {e}")
+
+init_db_types()
+
 def db_execute(query, params=(), fetch_id=False):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -177,8 +205,12 @@ def save_reflection():
 @app.route("/api/mentor/messages", methods=["GET"])
 @require_auth
 def get_messages():
-    # Find active mentorship where user is either mentee or mentor
-    mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active'", (request.user_id, request.user_id))
+    receiver_id = request.args.get("receiver_id")
+    if receiver_id:
+        mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) AND status = 'active'", (request.user_id, receiver_id, receiver_id, request.user_id))
+    else:
+        mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active'", (request.user_id, request.user_id))
+    
     if not mentor_row:
         return jsonify([])
     mentorship_id = mentor_row[0]
@@ -200,17 +232,34 @@ def send_message():
     data = request.json
     receiver_id = data.get("receiver_id")
     content = data.get("content")
-    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)",
-                               (request.user_id, receiver_id, receiver_id, request.user_id))
-    if not mentorship:
-        return jsonify({"error": "No active mentorship"}), 400
-    mentorship_id = mentorship[0]
-    db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES (%s, %s, %s, %s)",
-               (mentorship_id, request.user_id, receiver_id, content))
-    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::text", (receiver_id,))
-    if user_row and user_row[1]:
-        send_telegram_notification(receiver_id, f"📩 New message from your mentor/mentee. Open the app: {RENDER_URL}/recovery?token={generate_token(receiver_id)}")
-    return jsonify({"success": True})
+    
+    logger.info(f"Chat attempt: sender={request.user_id}, receiver={receiver_id}")
+    
+    try:
+        if receiver_id:
+            mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) AND status = 'active'", (request.user_id, receiver_id, receiver_id, request.user_id))
+        else:
+            mentorship = db_fetch_one("SELECT id, CASE WHEN user_id = %s::text THEN mentor_id ELSE user_id END FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active'", (request.user_id, request.user_id, request.user_id))
+        
+        if not mentorship:
+            logger.warning(f"Mentorship not found for sender {request.user_id}")
+            return jsonify({"error": "No active mentorship found. Please ask admin to assign you."}), 400
+            
+        mentorship_id = mentorship[0]
+        final_receiver_id = receiver_id if receiver_id else mentorship[1]
+        
+        db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES (%s, %s::text, %s::text, %s)",
+                (mentorship_id, request.user_id, final_receiver_id, content))
+        
+        # Notify
+        user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::text", (final_receiver_id,))
+        if user_row and user_row[1]:
+            send_telegram_notification(final_receiver_id, f"📩 New message. Open app: {RENDER_URL}/recovery?token={generate_token(final_receiver_id)}")
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        return jsonify({"error": "Server error while sending message"}), 500
 
 @app.route("/api/sessions", methods=["GET"])
 @require_auth
@@ -255,8 +304,8 @@ def join_session(session_id):
 @require_auth
 def get_mentees():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-    if user[0] != 'mentor':
-        return jsonify({"error": "Only mentors can view mentees"}), 403
+    if user[0] not in ('mentor', 'admin'):
+        return jsonify({"error": "Unauthorized"}), 403
     rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = %s::text AND m.status = 'active'", (request.user_id,))
     mentees = [{"id": r[0], "name": r[1], "streak": r[2]} for r in rows]
     return jsonify(mentees)
