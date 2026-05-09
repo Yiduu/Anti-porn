@@ -297,9 +297,15 @@
             </div>
         </div>
 
-        <!-- Profile Page -->
         <div id="profile-page" class="page">
             <h2 style="margin-bottom: 20px;">Account Settings</h2>
+            
+            <div id="admin-section" style="display: none;" class="glass-card">
+                <h3 style="color: var(--accent); margin-bottom: 10px;">Admin Actions</h3>
+                <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 15px;">Manage users and mentorships.</p>
+                <button class="btn-primary" onclick="window.location.href='/admin?token='+token">Open Admin Panel</button>
+            </div>
+
             <div class="glass-card">
                 <label style="font-size: 12px; color: var(--text-dim); margin-bottom: 5px; display: block;">ANONYMOUS NAME</label>
                 <input type="text" id="profile-name" placeholder="Name">
@@ -369,6 +375,10 @@
                 document.getElementById("streak").innerText = user.streak;
                 document.getElementById("profile-name").value = user.name;
                 
+                if (userRole === 'admin') {
+                    document.getElementById("admin-section").style.display = "block";
+                }
+                
                 const verse = await apiFetch("/api/daily-verse");
                 document.getElementById("verse-text").innerText = verse.text;
                 document.getElementById("verse-ref").innerText = verse.reference;
@@ -392,6 +402,15 @@
                 document.getElementById("sessions-list").innerHTML = html;
             } catch (e) {
                 console.error(e);
+                document.getElementById("app").innerHTML = `
+                    <div class="glass-card" style="margin-top: 50px; border-color: rgba(255,0,0,0.3);">
+                        <h3 style="color: #ff5555; margin-bottom: 10px;">Connection Error</h3>
+                        <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 20px;">
+                            We couldn't load your profile. This usually happens if the server is still starting or if your session has expired.
+                        </p>
+                        <button class="btn-primary" onclick="window.location.reload()">Retry</button>
+                    </div>
+                `;
             }
         }
 
