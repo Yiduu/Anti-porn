@@ -200,7 +200,7 @@ def send_message():
     data = request.json
     receiver_id = data.get("receiver_id")
     content = data.get("content")
-    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text AND mentor_id = %s) OR (user_id = %s::text AND mentor_id = %s)",
+    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)",
                                (request.user_id, receiver_id, receiver_id, request.user_id))
     if not mentorship:
         return jsonify({"error": "No active mentorship"}), 400
@@ -257,7 +257,7 @@ def get_mentees():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
     if user[0] != 'mentor':
         return jsonify({"error": "Only mentors can view mentees"}), 403
-    rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = %s AND m.status = 'active'", (request.user_id,))
+    rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = %s::text AND m.status = 'active'", (request.user_id,))
     mentees = [{"id": r[0], "name": r[1], "streak": r[2]} for r in rows]
     return jsonify(mentees)
 
@@ -318,9 +318,9 @@ def assign_mentor():
     data = request.json
     mentee_id = data.get("user_id")
     mentor_id = data.get("mentor_id")
-    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s::text AND mentor_id = %s", (mentee_id, mentor_id))
+    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s::text AND mentor_id = %s::text", (mentee_id, mentor_id))
     if not exists:
-        db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES (%s, %s, 'active')", (mentee_id, mentor_id))
+        db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES (%s::text, %s::text, 'active')", (mentee_id, mentor_id))
     return jsonify({"success": True})
 
 @app.route("/api/admin/broadcast", methods=["POST"])
