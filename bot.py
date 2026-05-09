@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
+ADMIN_ID = os.getenv("ADMIN_ID")
+
 def register_user(user_id, username):
     try:
         conn = get_db_connection()
@@ -30,12 +32,14 @@ def register_user(user_id, username):
         cur.execute("SELECT user_id FROM users WHERE user_id = %s::text", (str(user_id),))
         if not cur.fetchone():
             anonymous_name = username if username else f"Warrior_{str(user_id)[-4:]}"
+            # Check if this is the admin
+            role = 'admin' if str(user_id) == str(ADMIN_ID) else 'user'
             cur.execute(
                 "INSERT INTO users (user_id, anonymous_name, recovery_role) VALUES (%s::text, %s, %s)",
-                (str(user_id), anonymous_name, 'user')
+                (str(user_id), anonymous_name, role)
             )
             conn.commit()
-            logger.info(f"Registered new user: {user_id}")
+            logger.info(f"Registered new user: {user_id} with role: {role}")
         cur.close()
         conn.close()
     except Exception as e:
