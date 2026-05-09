@@ -30,16 +30,23 @@ def register_user(user_id, username):
         cur = conn.cursor()
         # Check if user exists
         cur.execute("SELECT user_id FROM users WHERE user_id = %s::text", (str(user_id),))
-        if not cur.fetchone():
-            anonymous_name = username if username else f"Warrior_{str(user_id)[-4:]}"
-            # Check if this is the admin
-            role = 'admin' if str(user_id) == str(ADMIN_ID) else 'user'
+        existing = cur.fetchone()
+        
+        anonymous_name = username if username else f"Warrior_{str(user_id)[-4:]}"
+        role = 'admin' if str(user_id) == str(ADMIN_ID) else 'user'
+        
+        if not existing:
             cur.execute(
                 "INSERT INTO users (user_id, anonymous_name, recovery_role) VALUES (%s::text, %s, %s)",
                 (str(user_id), anonymous_name, role)
             )
-            conn.commit()
-            logger.info(f"Registered new user: {user_id} with role: {role}")
+            logger.info(f"Registered new user: {user_id} as {role}")
+        elif str(user_id) == str(ADMIN_ID):
+            # Ensure the owner is ALWAYS an admin
+            cur.execute("UPDATE users SET recovery_role = 'admin' WHERE user_id = %s::text", (str(user_id),))
+            logger.info(f"Verified admin status for owner: {user_id}")
+            
+        conn.commit()
         cur.close()
         conn.close()
     except Exception as e:
