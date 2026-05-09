@@ -95,7 +95,12 @@ def recovery():
         return "Missing token. Please open via Telegram bot.", 400
     return render_template("recovery_dashboard.html", token=token)
 
-# -------------------- API Endpoints --------------------
+@app.route("/admin")
+def admin_page():
+    token = request.args.get("token")
+    if not token:
+        return "Unauthorized", 401
+    return render_template("admin_dashboard.html", token=token)
 @app.route("/api/user/me", methods=["GET"])
 @require_auth
 def get_user():
@@ -253,7 +258,17 @@ def update_profile():
     db_execute("UPDATE users SET anonymous_name = %s, bio = %s WHERE user_id = %s::text", (name, bio, request.user_id))
     return jsonify({"success": True})
 
-@app.route("/api/admin/init-db", methods=["GET"])
+@app.route("/api/admin/set-role", methods=["POST"])
+@require_auth
+def set_role():
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
+    if user[0] != 'admin':
+        return jsonify({"error": "Admin only"}), 403
+    data = request.json
+    target_id = data.get("user_id")
+    role = data.get("role")
+    db_execute("UPDATE users SET recovery_role = %s WHERE user_id = %s::text", (role, target_id))
+    return jsonify({"success": True})
 def init_db():
     # Simple guard: check for a secret key in args
     if request.args.get("key") != app.secret_key:
