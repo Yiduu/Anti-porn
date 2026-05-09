@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Admin - Recovery Companion</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-dark: #0a0a0a;
+            --card-bg: rgba(25, 25, 25, 0.8);
+            --accent: #FFD700;
+            --text-main: #FFFFFF;
+            --text-dim: #A0A0A0;
+        }
+        body {
+            background-color: var(--bg-dark);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            padding: 20px;
+        }
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1, h2 { font-family: 'Outfit', sans-serif; margin-bottom: 20px; }
+        .user-list { width: 100%; border-collapse: collapse; }
+        .user-list th, .user-list td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+        .badge-admin { background: rgba(255, 0, 0, 0.2); color: #ff5555; }
+        .badge-mentor { background: rgba(0, 255, 0, 0.2); color: #55ff55; }
+        .badge-user { background: rgba(255, 255, 255, 0.1); color: #fff; }
+        .btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        .select-input {
+            background: #1a1a1a;
+            color: #fff;
+            border: 1px solid #333;
+            padding: 8px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Admin Panel</h1>
+    
+    <div class="glass-card">
+        <h2>Users Management</h2>
+        <table class="user-list">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="user-rows">
+                <!-- Data will be loaded here -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="glass-card">
+        <h2>Assign Mentorship</h2>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <select id="mentee-select" class="select-input"><option>Select Mentee</option></select>
+            <select id="mentor-select" class="select-input"><option>Select Mentor</option></select>
+            <button class="btn" style="width: 100%; padding: 15px;" onclick="assignMentor()">Assign Relationship</button>
+        </div>
+    </div>
+
+    <script>
+        const token = "{{ token }}";
+        
+        async function apiFetch(path, options={}) {
+            const res = await fetch(path, {
+                headers: { "Authorization": token, "Content-Type": "application/json" },
+                ...options
+            });
+            return res.json();
+        }
+
+        async function loadUsers() {
+            const users = await apiFetch("/api/admin/users");
+            const tbody = document.getElementById("user-rows");
+            const menteeSelect = document.getElementById("mentee-select");
+            const mentorSelect = document.getElementById("mentor-select");
+            
+            tbody.innerHTML = "";
+            menteeSelect.innerHTML = "<option value=''>Select Mentee</option>";
+            mentorSelect.innerHTML = "<option value=''>Select Mentor</option>";
+
+            users.forEach(u => {
+                const badgeClass = u.role === 'admin' ? 'badge-admin' : (u.role === 'mentor' ? 'badge-mentor' : 'badge-user');
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${u.name}<br><small style="color: #666;">${u.id}</small></td>
+                        <td><span class="badge ${badgeClass}">${u.role}</span></td>
+                        <td>
+                            <button class="btn" onclick="setRole('${u.id}', 'mentor')">Make Mentor</button>
+                            <button class="btn" onclick="setRole('${u.id}', 'user')" style="background: #333; color: #fff;">Reset</button>
+                        </td>
+                    </tr>
+                `;
+                
+                menteeSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
+                if (u.role === 'mentor') {
+                    mentorSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
+                }
+            });
+        }
+
+        async function setRole(userId, role) {
+            await apiFetch("/api/admin/set-role", {
+                method: "POST",
+                body: JSON.stringify({ user_id: userId, role: role })
+            });
+            alert("Role updated!");
+            loadUsers();
+        }
+
+        async function assignMentor() {
+            const menteeId = document.getElementById("mentee-select").value;
+            const mentorId = document.getElementById("mentor-select").value;
+            if (!menteeId || !mentorId) return alert("Select both users");
+            
+            await apiFetch("/api/admin/assign-mentor", {
+                method: "POST",
+                body: JSON.stringify({ user_id: menteeId, mentor_id: mentorId })
+            });
+            alert("Mentorship assigned!");
+        }
+
+        loadUsers();
+    </script>
+</body>
+</html>
