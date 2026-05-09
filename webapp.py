@@ -122,14 +122,14 @@ def checkin():
     data = request.json
     status = data.get("status")
     today = datetime.now().date()
-    last_row = db_fetch_one("SELECT recovery_last_checkin FROM users WHERE user_id = %s", (request.user_id,))
+    last_row = db_fetch_one("SELECT recovery_last_checkin FROM users WHERE user_id = %s::text", (request.user_id,))
     last = last_row[0] if last_row else None
     if last == today:
         return jsonify({"error": "Already checked in today"}), 400
     streak = 0
     if status == "yes":
         if last and (today - last).days == 1:
-            cur = db_fetch_one("SELECT recovery_streak FROM users WHERE user_id = %s", (request.user_id,))[0]
+            cur = db_fetch_one("SELECT recovery_streak FROM users WHERE user_id = %s::text", (request.user_id,))[0]
             streak = cur + 1
         else:
             streak = 1
@@ -187,7 +187,7 @@ def send_message():
     data = request.json
     receiver_id = data.get("receiver_id")
     content = data.get("content")
-    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s AND mentor_id = %s) OR (user_id = %s AND mentor_id = %s)",
+    mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text AND mentor_id = %s) OR (user_id = %s::text AND mentor_id = %s)",
                                (request.user_id, receiver_id, receiver_id, request.user_id))
     if not mentorship:
         return jsonify({"error": "No active mentorship"}), 400
@@ -296,7 +296,7 @@ def assign_mentor():
     data = request.json
     mentee_id = data.get("user_id")
     mentor_id = data.get("mentor_id")
-    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s AND mentor_id = %s", (mentee_id, mentor_id))
+    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s::text AND mentor_id = %s", (mentee_id, mentor_id))
     if not exists:
         db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES (%s, %s, 'active')", (mentee_id, mentor_id))
     return jsonify({"success": True})
@@ -304,7 +304,7 @@ def assign_mentor():
 @app.route("/api/admin/broadcast", methods=["POST"])
 @require_auth
 def broadcast():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
     data = request.json
