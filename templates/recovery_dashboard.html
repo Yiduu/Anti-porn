@@ -490,13 +490,23 @@
         }
 
         async function loadChat() {
+            console.log("loadChat triggered, currentChatId:", currentChatId);
             const listView = document.getElementById("chat-list-view");
             const msgsView = document.getElementById("chat-messages-view");
             
+            if (!listView || !msgsView) {
+                console.error("Chat views not found in DOM");
+                return;
+            }
+
+            // Reset views
+            listView.style.display = "none";
+            msgsView.style.display = "none";
+
             // If user is mentor/admin and hasn't picked a chat yet, show the list
             if ((userRole === 'mentor' || userRole === 'admin') && !currentChatId) {
                 listView.style.display = "block";
-                msgsView.style.display = "none";
+                console.log("Showing mentee list...");
                 
                 try {
                     const mentees = await apiFetch("/api/mentees");
@@ -506,7 +516,7 @@
                         return;
                     }
                     list.innerHTML = mentees.map(m => `
-                        <div class="session-item" style="cursor: pointer; margin-bottom: 10px;" onclick="openChat('${m.id}', '${m.name}')">
+                        <div class="session-item" style="cursor: pointer; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.05);" onclick="openChat('${m.id}', '${m.name}')">
                             <div class="session-info">
                                 <h4>${m.name}</h4>
                                 <p>Streak: ${m.streak} days</p>
@@ -517,30 +527,34 @@
                     lucide.createIcons();
                 } catch (e) {
                     console.error("Error loading mentees:", e);
-                    document.getElementById("mentee-list").innerHTML = "<p style='padding: 20px; color: #ff5555; text-align: center;'>Error loading mentees. Please try again.</p>";
+                    document.getElementById("mentee-list").innerHTML = "<p style='padding: 20px; color: #ff5555; text-align: center;'>Error loading mentees. Click to retry.</p>";
                 }
                 return;
             }
 
-            // Otherwise, we are in a specific chat (either as a user or a mentor who picked someone)
-            listView.style.display = "none";
+            // Otherwise, we are in a specific chat
             msgsView.style.display = "block";
+            console.log("Loading messages for:", currentChatId || "default mentorship");
             
-            const path = currentChatId ? `/api/mentor/messages?receiver_id=${currentChatId}` : "/api/mentor/messages";
-            const msgs = await apiFetch(path);
-            const container = document.getElementById("chat-messages");
-            if (msgs.length === 0) {
-                container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding-top: 50px;"><p>No messages yet.</p></div>`;
-                return;
+            try {
+                const path = currentChatId ? `/api/mentor/messages?receiver_id=${currentChatId}` : "/api/mentor/messages";
+                const msgs = await apiFetch(path);
+                const container = document.getElementById("chat-messages");
+                if (msgs.length === 0) {
+                    container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding-top: 50px;"><p>No messages yet.</p></div>`;
+                } else {
+                    container.innerHTML = msgs.map(m => `
+                        <div class="msg ${m.sender_id === userId ? 'sent' : 'received'}">
+                            ${m.content}
+                            <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                        </div>
+                    `).join("");
+                    container.scrollTop = container.scrollHeight;
+                }
+                lucide.createIcons();
+            } catch (e) {
+                console.error("Error loading messages:", e);
             }
-            container.innerHTML = msgs.map(m => `
-                <div class="msg ${m.sender_id === userId ? 'sent' : 'received'}">
-                    ${m.content}
-                    <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                </div>
-            `).join("");
-            container.scrollTop = container.scrollHeight;
-            lucide.createIcons();
         }
 
         function showChatList() {
@@ -627,6 +641,7 @@
         }
 
         function switchPage(page) {
+            console.log("Switching to page:", page);
             document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
             document.getElementById(`${page}-page`).classList.add("active");
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
