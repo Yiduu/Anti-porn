@@ -66,7 +66,7 @@ def require_auth(f):
             return jsonify({"error": "Missing token"}), 401
         try:
             data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
-            request.user_id = data["user_id"]
+            request.user_id = int(data["user_id"])
         except:
             return jsonify({"error": "Invalid token"}), 401
         return f(*args, **kwargs)
@@ -99,7 +99,7 @@ def recovery():
 @app.route("/api/user/me", methods=["GET"])
 @require_auth
 def get_user():
-    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications FROM users WHERE user_id = %s", (request.user_id,))
+    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications FROM users WHERE user_id = %s::bigint", (request.user_id,))
     if not row:
         return jsonify({"error": "User not found"}), 404
     return jsonify({
@@ -130,7 +130,7 @@ def checkin():
             streak = 1
     else:
         streak = 0
-    db_execute("UPDATE users SET recovery_streak = %s, recovery_last_checkin = %s WHERE user_id = %s", (streak, today, request.user_id))
+    db_execute("UPDATE users SET recovery_streak = %s, recovery_last_checkin = %s WHERE user_id = %s::bigint", (streak, today, request.user_id))
     return jsonify({"streak": streak})
 
 @app.route("/api/daily-verse", methods=["GET"])
@@ -152,7 +152,7 @@ def save_reflection():
     verse = data.get("verse_text")
     reflection = data.get("reflection_text")
     voice_url = data.get("voice_file_url")
-    db_execute("INSERT INTO recovery_reflections (user_id, verse_text, reflection_text, voice_file_url) VALUES (%s, %s, %s, %s)",
+    db_execute("INSERT INTO recovery_reflections (user_id, verse_text, reflection_text, voice_file_url) VALUES (%s::bigint, %s, %s, %s)",
                (request.user_id, verse, reflection, voice_url))
     return jsonify({"success": True})
 
@@ -160,7 +160,7 @@ def save_reflection():
 @require_auth
 def get_messages():
     # Find active mentorship where user is either mentee or mentor
-    mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s OR mentor_id = %s) AND status = 'active'", (request.user_id, request.user_id))
+    mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::bigint OR mentor_id = %s::bigint) AND status = 'active'", (request.user_id, request.user_id))
     if not mentor_row:
         return jsonify([])
     mentorship_id = mentor_row[0]
@@ -168,9 +168,9 @@ def get_messages():
     
     # Get names for display
     user_names = {}
-    all_sender_ids = list(set([r[0] for r in rows]))
+    all_sender_ids = list(set([int(r[0]) for r in rows]))
     if all_sender_ids:
-        name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id IN %s", (tuple(all_sender_ids),))
+        name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id::bigint IN %s", (tuple(all_sender_ids),))
         user_names = {r[0]: r[1] for r in name_rows}
 
     messages = [{"sender_id": r[0], "sender_name": user_names.get(r[0], "Unknown"), "content": r[1], "timestamp": str(r[2])} for r in rows]
@@ -189,7 +189,7 @@ def send_message():
     mentorship_id = mentorship[0]
     db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES (%s, %s, %s, %s)",
                (mentorship_id, request.user_id, receiver_id, content))
-    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s", (receiver_id,))
+    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::bigint", (receiver_id,))
     if user_row and user_row[1]:
         send_telegram_notification(receiver_id, f"📩 New message from your mentor/mentee. Open the app: {RENDER_URL}/recovery?token={generate_token(receiver_id)}")
     return jsonify({"success": True})
@@ -204,7 +204,7 @@ def get_sessions():
 @app.route("/api/sessions", methods=["POST"])
 @require_auth
 def create_session():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::bigint", (request.user_id,))
     if user[0] not in ('mentor', 'admin'):
         return jsonify({"error": "Only mentors can create sessions"}), 403
     data = request.json
@@ -227,7 +227,7 @@ def join_session(session_id):
 @app.route("/api/mentees", methods=["GET"])
 @require_auth
 def get_mentees():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::bigint", (request.user_id,))
     if user[0] != 'mentor':
         return jsonify({"error": "Only mentors can view mentees"}), 403
     rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = %s AND m.status = 'active'", (request.user_id,))
@@ -237,7 +237,7 @@ def get_mentees():
 @app.route("/api/admin/users", methods=["GET"])
 @require_auth
 def admin_users():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::bigint", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
     rows = db_fetch_all("SELECT user_id, anonymous_name, recovery_role FROM users")
@@ -250,7 +250,7 @@ def update_profile():
     data = request.json
     name = data.get("name")
     bio = data.get("bio")
-    db_execute("UPDATE users SET anonymous_name = %s, bio = %s WHERE user_id = %s", (name, bio, request.user_id))
+    db_execute("UPDATE users SET anonymous_name = %s, bio = %s WHERE user_id = %s::bigint", (name, bio, request.user_id))
     return jsonify({"success": True})
 
 @app.route("/api/admin/init-db", methods=["GET"])
@@ -275,7 +275,7 @@ def init_db():
 @app.route("/api/admin/assign-mentor", methods=["POST"])
 @require_auth
 def assign_mentor():
-    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s", (request.user_id,))
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::bigint", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
     data = request.json
