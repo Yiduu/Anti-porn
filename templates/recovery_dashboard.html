@@ -517,6 +517,7 @@
                     lucide.createIcons();
                 } catch (e) {
                     console.error("Error loading mentees:", e);
+                    document.getElementById("mentee-list").innerHTML = "<p style='padding: 20px; color: #ff5555; text-align: center;'>Error loading mentees. Please try again.</p>";
                 }
                 return;
             }
