@@ -122,21 +122,34 @@ def checkin():
     data = request.json
     status = data.get("status")
     today = datetime.now().date()
-    last_row = db_fetch_one("SELECT recovery_last_checkin FROM users WHERE user_id = %s::text", (request.user_id,))
-    last = last_row[0] if last_row else None
+    
+    user_data = db_fetch_one("SELECT recovery_last_checkin, recovery_streak FROM users WHERE user_id = %s::text", (request.user_id,))
+    if not user_data:
+        return jsonify({"error": "User not found"}), 404
+        
+    last, current_streak = user_data
+    
     if last == today:
         return jsonify({"error": "Already checked in today"}), 400
-    streak = 0
+        
+    new_streak = 1
     if status == "yes":
-        if last and (today - last).days == 1:
-            cur = db_fetch_one("SELECT recovery_streak FROM users WHERE user_id = %s::text", (request.user_id,))[0]
-            streak = cur + 1
+        if last:
+            days_diff = (today - last).days
+            if days_diff == 1:
+                new_streak = (current_streak or 0) + 1
+            elif days_diff == 0: # already handled but for safety
+                new_streak = current_streak
+            else:
+                new_streak = 1 # Streak broken
         else:
-            streak = 1
+            new_streak = 1 # First checkin
     else:
-        streak = 0
-    db_execute("UPDATE users SET recovery_streak = %s, recovery_last_checkin = %s WHERE user_id = %s::text", (streak, today, request.user_id))
-    return jsonify({"streak": streak})
+        new_streak = 0 # Relapse
+        
+    db_execute("UPDATE users SET recovery_streak = %s, recovery_last_checkin = %s WHERE user_id = %s::text", (new_streak, today, request.user_id))
+    logger.info(f"User {request.user_id} checked in. New streak: {new_streak}")
+    return jsonify({"streak": new_streak})
 
 @app.route("/api/daily-verse", methods=["GET"])
 @require_auth
@@ -220,6 +233,15 @@ def create_session():
     db_execute("INSERT INTO recovery_live_sessions (title, description, host_id, scheduled_time, jitsi_room) VALUES (%s, %s, %s, %s, %s)",
                (title, description, request.user_id, scheduled_time, jitsi_room))
     return jsonify({"success": True, "room": jitsi_room})
+
+@app.route("/api/sessions/<int:session_id>", methods=["DELETE"])
+@require_auth
+def delete_session(session_id):
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
+    if user[0] not in ('mentor', 'admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    db_execute("DELETE FROM recovery_live_sessions WHERE id = %s", (session_id,))
+    return jsonify({"success": True})
 
 @app.route("/api/sessions/<int:session_id>/join", methods=["GET"])
 @require_auth
