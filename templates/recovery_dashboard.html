@@ -280,24 +280,32 @@
 
         <!-- Chat Page -->
         <div id="chat-page" class="page">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <button class="glass-card" style="padding: 10px; margin: 0;" onclick="showPage('chat-list')">
-                        <i data-lucide="arrow-left" style="width: 20px;"></i>
-                    </button>
-                    <h2 id="chat-title">Mentorship Chat</h2>
+            <div id="chat-list-view">
+                <h2 style="margin-bottom: 20px;">My Mentees</h2>
+                <div id="mentee-list" class="glass-card">
+                    <div class="loader"><div class="spinner"></div></div>
                 </div>
-                <button id="video-call-btn" class="glass-card" style="padding: 10px; margin: 0; display: none; color: var(--accent);" onclick="startPrivateVideoCall()">
-                    <i data-lucide="video" style="width: 20px;"></i>
-                </button>
             </div>
-            <div class="glass-card">
-                <div id="chat-messages" class="chat-container">
-                    <div style="text-align: center; color: var(--text-dim); padding-top: 50px;">
-                        <i data-lucide="message-square" style="width: 40px; height: 40px; margin-bottom: 10px; opacity: 0.5;"></i>
-                        <p>No messages yet.</p>
+
+            <div id="chat-messages-view" style="display: none;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button class="glass-card" style="padding: 10px; margin: 0;" onclick="showChatList()">
+                            <i data-lucide="arrow-left" style="width: 20px;"></i>
+                        </button>
+                        <h2 id="chat-title">Mentorship Chat</h2>
                     </div>
+                    <button id="video-call-btn" class="glass-card" style="padding: 10px; margin: 0; display: none; color: var(--accent);" onclick="startPrivateVideoCall()">
+                        <i data-lucide="video" style="width: 20px;"></i>
+                    </button>
                 </div>
+                <div class="glass-card">
+                    <div id="chat-messages" class="chat-container">
+                        <div style="text-align: center; color: var(--text-dim); padding-top: 50px;">
+                            <i data-lucide="message-square" style="width: 40px; height: 40px; margin-bottom: 10px; opacity: 0.5;"></i>
+                            <p>No messages yet.</p>
+                        </div>
+                    </div>
                 <div style="display: flex; gap: 10px; align-items: flex-end;">
                     <textarea id="chat-input" style="margin-bottom: 0; min-height: 50px; border-radius: 25px;" placeholder="Message mentor..."></textarea>
                     <button id="send-message" style="width: 50px; height: 50px; border-radius: 50%; background: var(--accent); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;">
@@ -402,7 +410,7 @@
                 if (userRole === 'admin') {
                     document.getElementById("admin-section").style.display = "block";
                 }
-                if (userRole === 'mentor') {
+                if (userRole === 'admin' || userRole === 'mentor') {
                     document.getElementById("mentor-section").style.display = "block";
                 }
                 
@@ -481,7 +489,43 @@
         }
 
         async function loadChat() {
-            const msgs = await apiFetch("/api/mentor/messages");
+            const listView = document.getElementById("chat-list-view");
+            const msgsView = document.getElementById("chat-messages-view");
+            
+            // If user is mentor/admin and hasn't picked a chat yet, show the list
+            if ((userRole === 'mentor' || userRole === 'admin') && !currentChatId) {
+                listView.style.display = "block";
+                msgsView.style.display = "none";
+                
+                try {
+                    const mentees = await apiFetch("/api/mentees");
+                    const list = document.getElementById("mentee-list");
+                    if (mentees.length === 0) {
+                        list.innerHTML = "<p style='padding: 20px; color: var(--text-dim); text-align: center;'>No mentees assigned to you yet.</p>";
+                        return;
+                    }
+                    list.innerHTML = mentees.map(m => `
+                        <div class="session-item" style="cursor: pointer; margin-bottom: 10px;" onclick="openChat('${m.id}', '${m.name}')">
+                            <div class="session-info">
+                                <h4>${m.name}</h4>
+                                <p>Streak: ${m.streak} days</p>
+                            </div>
+                            <i data-lucide="chevron-right" style="color: var(--text-dim); width: 20px;"></i>
+                        </div>
+                    `).join("");
+                    lucide.createIcons();
+                } catch (e) {
+                    console.error("Error loading mentees:", e);
+                }
+                return;
+            }
+
+            // Otherwise, we are in a specific chat (either as a user or a mentor who picked someone)
+            listView.style.display = "none";
+            msgsView.style.display = "block";
+            
+            const path = currentChatId ? `/api/mentor/messages?receiver_id=${currentChatId}` : "/api/mentor/messages";
+            const msgs = await apiFetch(path);
             const container = document.getElementById("chat-messages");
             if (msgs.length === 0) {
                 container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding-top: 50px;"><p>No messages yet.</p></div>`;
@@ -497,9 +541,16 @@
             lucide.createIcons();
         }
 
+        function showChatList() {
+            currentChatId = null;
+            loadChat();
+        }
+
         async function openChat(menteeId, menteeName) {
             currentChatId = menteeId;
             document.getElementById("chat-title").innerText = menteeName;
+            document.getElementById("chat-list-view").style.display = "none";
+            document.getElementById("chat-messages-view").style.display = "block";
             
             // Show video call button for mentors and admins
             if (userRole === 'mentor' || userRole === 'admin') {
@@ -508,8 +559,7 @@
                 document.getElementById("video-call-btn").style.display = "none";
             }
             
-            showPage('chat-page');
-            loadMessages();
+            loadChat();
         }
 
         async function startPrivateVideoCall() {
@@ -549,10 +599,12 @@
             if (!content) return;
             
             try {
-                // Determine receiver - for simplicity in this MVP we assume the first mentee or mentor
                 const res = await apiFetch("/api/mentor/message", { 
                     method: "POST", 
-                    body: JSON.stringify({ content }) 
+                    body: JSON.stringify({ 
+                        content, 
+                        receiver_id: currentChatId 
+                    }) 
                 });
                 input.value = "";
                 loadChat();
