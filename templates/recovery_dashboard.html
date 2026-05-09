@@ -1,101 +1,354 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Christian Recovery Companion</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Recovery Companion</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
+        :root {
+            --bg-dark: #050505;
+            --card-bg: rgba(20, 20, 20, 0.7);
+            --accent: #FFD700;
+            --accent-muted: rgba(255, 215, 0, 0.15);
+            --text-main: #FFFFFF;
+            --text-dim: #A0A0A0;
+            --safe-area-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
         body {
-            background: #0a0a0a;
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(255, 215, 0, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.05) 0%, transparent 40%);
             font-family: 'Inter', sans-serif;
-            color: #eee;
-            padding: 16px;
+            color: var(--text-main);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
+
+        h1, h2, h3, .font-outfit { font-family: 'Outfit', sans-serif; }
+
+        .app-container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px 20px 100px;
+        }
+
         .glass-card {
-            background: rgba(30,30,30,0.8);
-            backdrop-filter: blur(12px);
-            border-radius: 20px;
-            padding: 20px;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 24px;
             margin-bottom: 20px;
-            border: 1px solid rgba(255,215,0,0.2);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease;
         }
-        .gold { color: #FFD966; }
-        .btn {
-            background: linear-gradient(135deg, #FFD966, #d4af37);
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .streak-badge {
+            background: var(--accent-muted);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 6px 14px;
+            border-radius: 100px;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .streak-badge i { width: 16px; height: 16px; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #FFD700, #B8860B);
             color: #000;
             border: none;
-            padding: 12px 20px;
-            border-radius: 40px;
-            font-weight: bold;
+            padding: 16px 24px;
+            border-radius: 16px;
+            font-weight: 700;
+            font-size: 16px;
             cursor: pointer;
             width: 100%;
-            margin-top: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+            transition: all 0.2s ease;
         }
-        .flex { display: flex; gap: 12px; flex-wrap: wrap; }
-        .nav-bottom {
+
+        .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+
+        .verse-box {
+            position: relative;
+            padding-left: 20px;
+            border-left: 3px solid var(--accent);
+            margin: 20px 0;
+        }
+
+        .verse-text { font-style: italic; font-size: 17px; color: #ddd; margin-bottom: 10px; }
+        .verse-ref { font-weight: 600; color: var(--accent); font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+
+        textarea {
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 15px;
+            color: #fff;
+            font-family: inherit;
+            resize: none;
+            margin-bottom: 15px;
+            min-height: 100px;
+        }
+
+        textarea:focus { outline: none; border-color: var(--accent); background: rgba(255,255,255,0.08); }
+
+        .session-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .session-item:last-child { border-bottom: none; }
+        .session-info h4 { font-size: 16px; margin-bottom: 4px; }
+        .session-info p { font-size: 13px; color: var(--text-dim); }
+
+        .nav-bar {
             position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(10,10,10,0.9);
-            backdrop-filter: blur(10px);
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(15, 15, 15, 0.85);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
             display: flex;
             justify-content: space-around;
-            padding: 10px;
-            border-top: 1px solid #FFD966;
+            padding: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            z-index: 1000;
         }
-        .nav-item { text-align: center; font-size: 12px; cursor: pointer; opacity: 0.6; }
-        .nav-item.active { opacity: 1; color: #FFD966; }
-        .page { display: none; padding-bottom: 80px; }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: var(--text-dim);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+
+        .nav-item.active { color: var(--accent); }
+        .nav-item i { width: 22px; height: 22px; }
+
+        .page { display: none; animation: fadeIn 0.4s ease forwards; }
         .page.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-right: 5px;
+        }
+
+        .msg {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 14px;
+            position: relative;
+        }
+        .msg.sent {
+            align-self: flex-end;
+            background: var(--accent);
+            color: #000;
+            border-bottom-right-radius: 4px;
+        }
+        .msg.received {
+            align-self: flex-start;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border-bottom-left-radius: 4px;
+        }
+        .msg-info { font-size: 10px; opacity: 0.6; margin-top: 4px; }
+
+        /* Loader */
+        .loader {
+            display: flex;
+            justify-content: center;
+            padding: 40px;
+        }
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(255,215,0,0.1);
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        input[type="text"] {
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 12px;
+            color: #fff;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
-    <div id="app">
-        <!-- pages will be injected by js -->
+    <div class="app-container">
+        <!-- Dashboard Page -->
         <div id="dashboard-page" class="page active">
-            <div class="glass-card">
-                <h2>Welcome, <span id="user-name">...</span></h2>
-                <p>🔥 Streak: <span id="streak">0</span> days</p>
-                <button class="btn" id="checkin-btn">✅ Check In</button>
+            <div class="header">
+                <div>
+                    <p style="color: var(--text-dim); font-size: 14px;">Welcome back,</p>
+                    <h2 id="user-name">...</h2>
+                </div>
+                <div class="streak-badge">
+                    <i data-lucide="flame"></i>
+                    <span id="streak">0</span> Days
+                </div>
             </div>
+
             <div class="glass-card">
-                <h3>📖 Daily Verse</h3>
-                <p id="verse-text">Loading...</p>
-                <textarea id="reflection-text" placeholder="Write your reflection..."></textarea>
-                <button class="btn" id="save-reflection">Save Reflection</button>
+                <h3 style="margin-bottom: 15px;">Daily Check-In</h3>
+                <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 20px;">Have you stayed strong today?</p>
+                <button class="btn-primary" id="checkin-btn">
+                    <i data-lucide="check-circle"></i> Yes, I am Clean
+                </button>
             </div>
+
             <div class="glass-card">
-                <h3>📅 Upcoming Live Sessions</h3>
-                <div id="sessions-list">Loading...</div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <i data-lucide="book-open" style="color: var(--accent); width: 20px;"></i>
+                    <h3>Daily Verse</h3>
+                </div>
+                <div id="verse-content" class="verse-box">
+                    <p class="verse-text" id="verse-text">Loading inspiration...</p>
+                    <p class="verse-ref" id="verse-ref"></p>
+                </div>
+                <textarea id="reflection-text" placeholder="Journal your thoughts or prayers..."></textarea>
+                <button class="btn-primary" style="background: rgba(255,255,255,0.1); color: #fff; box-shadow: none;" id="save-reflection">
+                    Save Reflection
+                </button>
+            </div>
+
+            <div class="glass-card">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                    <i data-lucide="video" style="color: var(--accent); width: 20px;"></i>
+                    <h3>Live Sessions</h3>
+                </div>
+                <div id="sessions-list">
+                    <div class="loader"><div class="spinner"></div></div>
+                </div>
             </div>
         </div>
+
+        <!-- Chat Page -->
         <div id="chat-page" class="page">
-            <div class="glass-card" id="chat-messages"></div>
-            <textarea id="chat-input" placeholder="Type your message..."></textarea>
-            <button class="btn" id="send-message">Send</button>
-        </div>
-        <div id="profile-page" class="page">
+            <h2 style="margin-bottom: 20px;">Mentorship Chat</h2>
             <div class="glass-card">
-                <h3>Edit Profile</h3>
-                <input type="text" id="profile-name" placeholder="Anonymous Name">
-                <textarea id="profile-bio" placeholder="Bio"></textarea>
-                <button class="btn" id="save-profile">Save</button>
+                <div id="chat-messages" class="chat-container">
+                    <div style="text-align: center; color: var(--text-dim); padding-top: 50px;">
+                        <i data-lucide="message-square" style="width: 40px; height: 40px; margin-bottom: 10px; opacity: 0.5;"></i>
+                        <p>No messages yet.</p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: flex-end;">
+                    <textarea id="chat-input" style="margin-bottom: 0; min-height: 50px; border-radius: 25px;" placeholder="Message mentor..."></textarea>
+                    <button id="send-message" style="width: 50px; height: 50px; border-radius: 50%; background: var(--accent); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;">
+                        <i data-lucide="send" style="color: #000; width: 20px;"></i>
+                    </button>
+                </div>
             </div>
         </div>
-        <div class="nav-bottom">
-            <div class="nav-item active" data-page="dashboard">🏠 Home</div>
-            <div class="nav-item" data-page="chat">💬 Chat</div>
-            <div class="nav-item" data-page="profile">👤 Profile</div>
+
+        <!-- Profile Page -->
+        <div id="profile-page" class="page">
+            <h2 style="margin-bottom: 20px;">Account Settings</h2>
+            <div class="glass-card">
+                <label style="font-size: 12px; color: var(--text-dim); margin-bottom: 5px; display: block;">ANONYMOUS NAME</label>
+                <input type="text" id="profile-name" placeholder="Name">
+                
+                <label style="font-size: 12px; color: var(--text-dim); margin-bottom: 5px; display: block;">BIO / MOTIVATION</label>
+                <textarea id="profile-bio" placeholder="What keeps you going?"></textarea>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <span>Daily Notifications</span>
+                    <input type="checkbox" id="profile-notifs" checked>
+                </div>
+
+                <button class="btn-primary" id="save-profile">Save Changes</button>
+            </div>
+            
+            <div class="glass-card" style="border-color: rgba(255,0,0,0.2);">
+                <h3 style="color: #ff5555; margin-bottom: 10px;">Support</h3>
+                <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 15px;">Need urgent help? Reach out to our community support.</p>
+                <button class="btn-primary" style="background: rgba(255,85,85,0.1); color: #ff5555; box-shadow: none;">Emergency Support</button>
+            </div>
         </div>
+
+        <!-- Navigation -->
+        <nav class="nav-bar">
+            <div class="nav-item active" data-page="dashboard">
+                <i data-lucide="home"></i>
+                <span>Home</span>
+            </div>
+            <div class="nav-item" data-page="chat">
+                <i data-lucide="message-circle"></i>
+                <span>Chat</span>
+            </div>
+            <div class="nav-item" data-page="profile">
+                <i data-lucide="user"></i>
+                <span>Profile</span>
+            </div>
+        </nav>
     </div>
+
     <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // Theme sync
+        document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#FFD700');
+
         const token = "{{ token }}";
         let userId = null;
-        let currentPage = "dashboard";
         let userRole = null;
 
         async function apiFetch(path, options={}) {
@@ -103,33 +356,63 @@
                 headers: { "Authorization": token, "Content-Type": "application/json" },
                 ...options
             });
+            if (!res.ok) throw new Error("API Error");
             return res.json();
         }
 
         async function loadDashboard() {
-            const user = await apiFetch("/api/user/me");
-            userId = user.user_id;
-            userRole = user.role;
-            document.getElementById("user-name").innerText = user.name;
-            document.getElementById("streak").innerText = user.streak;
-            const verse = await apiFetch("/api/daily-verse");
-            document.getElementById("verse-text").innerHTML = `<strong>${verse.reference}</strong><br>${verse.text}`;
-            const sessions = await apiFetch("/api/sessions");
-            let html = "";
-            sessions.forEach(s => {
-                html += `<div><b>${s.title}</b><br>${s.time}<br><button class="btn" onclick="joinSession(${s.id})">Join</button></div>`;
-            });
-            document.getElementById("sessions-list").innerHTML = html || "No upcoming sessions.";
+            try {
+                const user = await apiFetch("/api/user/me");
+                userId = user.user_id;
+                userRole = user.role;
+                document.getElementById("user-name").innerText = user.name;
+                document.getElementById("streak").innerText = user.streak;
+                document.getElementById("profile-name").value = user.name;
+                
+                const verse = await apiFetch("/api/daily-verse");
+                document.getElementById("verse-text").innerText = verse.text;
+                document.getElementById("verse-ref").innerText = verse.reference;
+
+                const sessions = await apiFetch("/api/sessions");
+                let html = "";
+                if (sessions.length === 0) {
+                    html = "<p style='color: var(--text-dim); font-size: 14px;'>No upcoming sessions.</p>";
+                } else {
+                    sessions.forEach(s => {
+                        html += `
+                        <div class="session-item">
+                            <div class="session-info">
+                                <h4>${s.title}</h4>
+                                <p>${new Date(s.time).toLocaleString()}</p>
+                            </div>
+                            <button class="btn-primary" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="joinSession(${s.id})">Join</button>
+                        </div>`;
+                    });
+                }
+                document.getElementById("sessions-list").innerHTML = html;
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         async function joinSession(sessionId) {
             const data = await apiFetch(`/api/sessions/${sessionId}/join`);
-            window.open(data.jitsi_url, "_blank");
+            tg.openLink(data.jitsi_url);
         }
 
         async function checkin() {
-            const res = await apiFetch("/api/checkin", { method: "POST", body: JSON.stringify({ status: "yes" }) });
-            if (res.streak) document.getElementById("streak").innerText = res.streak;
+            try {
+                const res = await apiFetch("/api/checkin", { method: "POST", body: JSON.stringify({ status: "yes" }) });
+                if (res.streak !== undefined) {
+                    document.getElementById("streak").innerText = res.streak;
+                    tg.HapticFeedback.notificationOccurred('success');
+                    alert("Keep it up! Your streak is now " + res.streak + " days.");
+                } else if (res.error) {
+                    alert(res.error);
+                }
+            } catch (e) {
+                alert("Already checked in today!");
+            }
         }
 
         async function saveReflection() {
@@ -137,33 +420,55 @@
             const reflection = document.getElementById("reflection-text").value;
             if (!reflection) return;
             await apiFetch("/api/reflection", { method: "POST", body: JSON.stringify({ verse_text: verseText, reflection_text: reflection }) });
-            alert("Reflection saved!");
+            tg.HapticFeedback.impactOccurred('medium');
+            alert("Reflection saved to your journey.");
             document.getElementById("reflection-text").value = "";
         }
 
         async function loadChat() {
             const msgs = await apiFetch("/api/mentor/messages");
             const container = document.getElementById("chat-messages");
-            container.innerHTML = msgs.map(m => `<div><b>${m.sender_id === userId ? "You" : "Mentor"}:</b> ${m.content}</div>`).join("");
+            if (msgs.length === 0) {
+                container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding-top: 50px;"><p>No messages yet.</p></div>`;
+                return;
+            }
+            container.innerHTML = msgs.map(m => `
+                <div class="msg ${m.sender_id === userId ? 'sent' : 'received'}">
+                    ${m.content}
+                    <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                </div>
+            `).join("");
+            container.scrollTop = container.scrollHeight;
+            lucide.createIcons();
         }
 
         async function sendMessage() {
             const input = document.getElementById("chat-input");
             const content = input.value.trim();
             if (!content) return;
-            // For mentor/mentee we need receiver_id – we'll assume the other party
-            const mentees = await apiFetch("/api/mentees");
-            let receiver = null;
-            if (userRole === "mentor" && mentees.length) receiver = mentees[0].id;
-            else if (userRole === "user") {
-                const mentorRow = await apiFetch("/api/mentees"); // hack: fetch mentor? Actually we need a /api/mentor endpoint.
-                // Simpler: we'll send to the user's mentor (hardcoded for demo)
-                alert("Message sending not fully implemented; use admin to assign mentor first.");
-                return;
+            
+            try {
+                // Determine receiver - for simplicity in this MVP we assume the first mentee or mentor
+                const res = await apiFetch("/api/mentor/message", { 
+                    method: "POST", 
+                    body: JSON.stringify({ content }) 
+                });
+                input.value = "";
+                loadChat();
+            } catch (e) {
+                alert("Assignment needed: Ask admin to assign a mentor/mentee first.");
             }
-            await apiFetch("/api/mentor/message", { method: "POST", body: JSON.stringify({ receiver_id: receiver, content }) });
-            input.value = "";
-            loadChat();
+        }
+
+        async function saveProfile() {
+            const name = document.getElementById("profile-name").value;
+            const bio = document.getElementById("profile-bio").value;
+            await apiFetch("/api/user/update", { 
+                method: "POST", 
+                body: JSON.stringify({ name, bio }) 
+            });
+            alert("Profile updated!");
+            loadDashboard();
         }
 
         function switchPage(page) {
@@ -171,17 +476,24 @@
             document.getElementById(`${page}-page`).classList.add("active");
             document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
             document.querySelector(`.nav-item[data-page="${page}"]`).classList.add("active");
-            currentPage = page;
+            
             if (page === "dashboard") loadDashboard();
             if (page === "chat") loadChat();
+            
+            tg.HapticFeedback.impactOccurred('light');
         }
 
         document.getElementById("checkin-btn").onclick = checkin;
         document.getElementById("save-reflection").onclick = saveReflection;
         document.getElementById("send-message").onclick = sendMessage;
+        document.getElementById("save-profile").onclick = saveProfile;
+
         document.querySelectorAll(".nav-item").forEach(item => {
             item.onclick = () => switchPage(item.dataset.page);
         });
+
+        // Initialize
+        lucide.createIcons();
         loadDashboard();
     </script>
 </body>
