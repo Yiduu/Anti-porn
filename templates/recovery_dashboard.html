@@ -280,7 +280,17 @@
 
         <!-- Chat Page -->
         <div id="chat-page" class="page">
-            <h2 style="margin-bottom: 20px;">Mentorship Chat</h2>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button class="glass-card" style="padding: 10px; margin: 0;" onclick="showPage('chat-list')">
+                        <i data-lucide="arrow-left" style="width: 20px;"></i>
+                    </button>
+                    <h2 id="chat-title">Mentorship Chat</h2>
+                </div>
+                <button id="video-call-btn" class="glass-card" style="padding: 10px; margin: 0; display: none; color: var(--accent);" onclick="startPrivateVideoCall()">
+                    <i data-lucide="video" style="width: 20px;"></i>
+                </button>
+            </div>
             <div class="glass-card">
                 <div id="chat-messages" class="chat-container">
                     <div style="text-align: center; color: var(--text-dim); padding-top: 50px;">
@@ -307,6 +317,16 @@
                 <h3 style="color: var(--accent); margin-bottom: 10px;">Admin Actions</h3>
                 <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 15px;">Manage users and mentorships.</p>
                 <button class="btn-primary" onclick="window.location.href='/admin?token='+token">Open Admin Panel</button>
+            </div>
+
+            <div id="mentor-section" style="display: none;" class="glass-card">
+                <h3 style="color: var(--accent); margin-bottom: 10px;">Mentor Tools</h3>
+                <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 15px;">Schedule sessions or manage mentees.</p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <input type="text" id="mentor-session-title" class="glass-card" style="margin-bottom: 0;" placeholder="Session Title">
+                    <input type="datetime-local" id="mentor-session-time" class="glass-card" style="margin-bottom: 0;">
+                    <button class="btn-primary" onclick="mentorCreateSession()">Schedule Group Session</button>
+                </div>
             </div>
 
             <div class="glass-card">
@@ -381,6 +401,9 @@
                 
                 if (userRole === 'admin') {
                     document.getElementById("admin-section").style.display = "block";
+                }
+                if (userRole === 'mentor') {
+                    document.getElementById("mentor-section").style.display = "block";
                 }
                 
                 const verse = await apiFetch("/api/daily-verse");
@@ -463,6 +486,52 @@
             `).join("");
             container.scrollTop = container.scrollHeight;
             lucide.createIcons();
+        }
+
+        async function openChat(menteeId, menteeName) {
+            currentChatId = menteeId;
+            document.getElementById("chat-title").innerText = menteeName;
+            
+            // Show video call button only for mentors
+            if (userRole === 'mentor') {
+                document.getElementById("video-call-btn").style.display = "block";
+            } else {
+                document.getElementById("video-call-btn").style.display = "none";
+            }
+            
+            showPage('chat-page');
+            loadMessages();
+        }
+
+        async function startPrivateVideoCall() {
+            if (!currentChatId) return;
+            const roomName = `recovery-call-${userId.slice(-4)}-${currentChatId.slice(-4)}`;
+            const jitsiUrl = `https://meet.jit.si/${roomName}`;
+            const message = `🎬 Mentor is inviting you to a private video call.\nJoin here: ${jitsiUrl}`;
+            
+            // Send as a chat message
+            await apiFetch("/api/mentor/send", {
+                method: "POST",
+                body: JSON.stringify({ receiver_id: currentChatId, content: message })
+            });
+            
+            tg.HapticFeedback.notificationOccurred('success');
+            window.open(jitsiUrl, '_blank');
+        }
+
+        async function mentorCreateSession() {
+            const title = document.getElementById("mentor-session-title").value;
+            const scheduled_time = document.getElementById("mentor-session-time").value;
+            if (!title || !scheduled_time) return alert("Title and Time are required");
+
+            await apiFetch("/api/sessions", {
+                method: "POST",
+                body: JSON.stringify({ title, description: "Mentor Session", scheduled_time })
+            });
+            alert("Session scheduled!");
+            document.getElementById("mentor-session-title").value = "";
+            document.getElementById("mentor-session-time").value = "";
+            loadDashboard();
         }
 
         async function sendMessage() {
