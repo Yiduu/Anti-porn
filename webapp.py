@@ -22,6 +22,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # -------------------- Database helpers --------------------
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '-1'
+    return response
+
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
@@ -44,30 +51,42 @@ def db_fetch_all(query, params=()):
     return rows
 
 def init_db_types():
-    """Migrate all ID columns to TEXT to avoid type mismatch issues."""
+    """Migrate all ID columns to TEXT and add new registration columns."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Migrate users table
+        # Migrate IDs
         cur.execute("ALTER TABLE users ALTER COLUMN user_id TYPE TEXT USING user_id::text")
-        # Migrate reflections
         cur.execute("ALTER TABLE recovery_reflections ALTER COLUMN user_id TYPE TEXT USING user_id::text")
-        # Migrate mentorships
         cur.execute("ALTER TABLE recovery_mentorships ALTER COLUMN user_id TYPE TEXT USING user_id::text")
         cur.execute("ALTER TABLE recovery_mentorships ALTER COLUMN mentor_id TYPE TEXT USING mentor_id::text")
-        # Migrate messages
         cur.execute("ALTER TABLE recovery_messages ALTER COLUMN sender_id TYPE TEXT USING sender_id::text")
         cur.execute("ALTER TABLE recovery_messages ALTER COLUMN receiver_id TYPE TEXT USING receiver_id::text")
-        # Migrate sessions
         cur.execute("ALTER TABLE recovery_live_sessions ALTER COLUMN host_id TYPE TEXT USING host_id::text")
         
+        # Add new columns if they don't exist
+        cols = {
+            "sex": "TEXT",
+            "age": "INT",
+            "educational_level": "TEXT",
+            "addiction_year": "TEXT",
+            "longest_free_streak": "INT DEFAULT 0",
+            "profile_complete": "BOOLEAN DEFAULT FALSE"
+        }
+        for col, dtype in cols.items():
+            cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {dtype}")
+            
+        # Update mentorship status default
+        cur.execute("ALTER TABLE recovery_mentorships ALTER COLUMN status SET DEFAULT 'pending'")
+        
         conn.commit()
-        logger.info("✅ Database migration to TEXT IDs successful.")
+        logger.info("✅ Database migrations successful.")
         cur.close()
         conn.close()
     except Exception as e:
         logger.error(f"⚠️ Database migration note: {e}")
+
 
 init_db_types()
 
@@ -132,7 +151,7 @@ def admin_page():
 @app.route("/api/user/me", methods=["GET"])
 @require_auth
 def get_user():
-    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications FROM users WHERE user_id = %s::text", (request.user_id,))
+    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications, profile_complete, sex, age, educational_level, addiction_year, longest_free_streak FROM users WHERE user_id = %s::text", (request.user_id,))
     if not row:
         return jsonify({"error": "User not found"}), 404
     return jsonify({
@@ -141,8 +160,32 @@ def get_user():
         "role": row[2],
         "streak": row[3],
         "last_checkin": str(row[4]) if row[4] else None,
-        "notifications": row[5]
+        "notifications": row[5],
+        "profile_complete": row[6],
+        "sex": row[7],
+        "age": row[8],
+        "education": row[9],
+        "addiction_year": row[10],
+        "longest_streak": row[11]
     })
+
+@app.route("/api/profile/complete", methods=["POST"])
+@require_auth
+def complete_profile():
+    data = request.json
+    sex = data.get("sex")
+    age = data.get("age")
+    edu = data.get("educational_level")
+    addiction = data.get("addiction_year")
+    streak = data.get("longest_free_streak")
+    
+    db_execute("""
+        UPDATE users SET 
+        sex = %s, age = %s, educational_level = %s, addiction_year = %s, longest_free_streak = %s, profile_complete = TRUE 
+        WHERE user_id = %s::text
+    """, (sex, age, edu, addiction, streak, request.user_id))
+    return jsonify({"success": True})
+
 
 @app.route("/api/checkin", methods=["POST"])
 @require_auth
@@ -213,6 +256,7 @@ def get_messages():
     
     if not mentor_row:
         return jsonify([])
+    
     mentorship_id = mentor_row[0]
     rows = db_fetch_all("SELECT sender_id, content, timestamp FROM recovery_messages WHERE mentorship_id = %s ORDER BY timestamp", (mentorship_id,))
     
@@ -220,11 +264,16 @@ def get_messages():
     user_names = {}
     all_sender_ids = list(set([str(r[0]) for r in rows]))
     if all_sender_ids:
-        name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id::text IN %s", (tuple(all_sender_ids),))
+        # Use tuple safely
+        if len(all_sender_ids) == 1:
+            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id::text = %s", (all_sender_ids[0],))
+        else:
+            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id::text IN %s", (tuple(all_sender_ids),))
         user_names = {r[0]: r[1] for r in name_rows}
 
-    messages = [{"sender_id": r[0], "sender_name": user_names.get(r[0], "Unknown"), "content": r[1], "timestamp": str(r[2])} for r in rows]
+    messages = [{"sender_id": r[0], "sender_name": user_names.get(str(r[0]), "Unknown"), "content": r[1], "timestamp": str(r[2])} for r in rows]
     return jsonify(messages)
+
 
 @app.route("/api/mentor/message", methods=["POST"])
 @require_auth
@@ -233,8 +282,6 @@ def send_message():
     receiver_id = data.get("receiver_id")
     content = data.get("content")
     
-    logger.info(f"Chat attempt: sender={request.user_id}, receiver={receiver_id}")
-    
     try:
         if receiver_id:
             mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) AND status = 'active'", (request.user_id, receiver_id, receiver_id, request.user_id))
@@ -242,8 +289,7 @@ def send_message():
             mentorship = db_fetch_one("SELECT id, CASE WHEN user_id = %s::text THEN mentor_id ELSE user_id END FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active'", (request.user_id, request.user_id, request.user_id))
         
         if not mentorship:
-            logger.warning(f"Mentorship not found for sender {request.user_id}")
-            return jsonify({"error": "No active mentorship found. Please ask admin to assign you."}), 400
+            return jsonify({"error": "No active mentorship found."}), 400
             
         mentorship_id = mentorship[0]
         final_receiver_id = receiver_id if receiver_id else mentorship[1]
@@ -254,12 +300,94 @@ def send_message():
         # Notify
         user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::text", (final_receiver_id,))
         if user_row and user_row[1]:
-            send_telegram_notification(final_receiver_id, f"📩 New message. Open app: {RENDER_URL}/recovery?token={generate_token(final_receiver_id)}")
+            sender_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
+            sender_name = sender_row[0] if sender_row else "Someone"
+            send_telegram_notification(final_receiver_id, f"📩 New message from {sender_name} in Recovery App.")
         
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        return jsonify({"error": "Server error while sending message"}), 500
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/mentors", methods=["GET"])
+@require_auth
+def get_mentors():
+    rows = db_fetch_all("SELECT user_id, anonymous_name, bio FROM users WHERE recovery_role = 'mentor'")
+    mentors = [{"id": r[0], "name": r[1], "bio": r[2]} for r in rows]
+    return jsonify(mentors)
+
+@app.route("/api/mentorship/request", methods=["POST"])
+@require_auth
+def request_mentorship():
+    data = request.json
+    mentor_id = data.get("mentor_id")
+    
+    # Check if already exists
+    exists = db_fetch_one("SELECT id FROM recovery_mentorships WHERE user_id = %s::text AND mentor_id = %s::text AND status != 'rejected'", (request.user_id, mentor_id))
+    if exists:
+        return jsonify({"error": "Request already pending or active"}), 400
+        
+    db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES (%s::text, %s::text, 'pending')", (request.user_id, mentor_id))
+    
+    # Notify mentor
+    user_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
+    user_name = user_row[0] if user_row else "A user"
+    send_telegram_notification(mentor_id, f"🤝 New mentorship request from {user_name}! Check the app to accept or reject.")
+    
+    return jsonify({"success": True})
+
+@app.route("/api/mentorship/requests", methods=["GET"])
+@require_auth
+def get_mentorship_requests():
+    rows = db_fetch_all("""
+        SELECT m.id, u.user_id, u.anonymous_name, u.recovery_streak 
+        FROM recovery_mentorships m 
+        JOIN users u ON m.user_id = u.user_id 
+        WHERE m.mentor_id = %s::text AND m.status = 'pending'
+    """, (request.user_id,))
+    requests = [{"id": r[0], "user_id": r[1], "name": r[2], "streak": r[3]} for r in rows]
+    return jsonify(requests)
+
+@app.route("/api/mentorship/respond", methods=["POST"])
+@require_auth
+def respond_mentorship():
+    data = request.json
+    request_id = data.get("request_id")
+    action = data.get("action") # 'accept' or 'reject'
+    
+    status = 'active' if action == 'accept' else 'rejected'
+    
+    # Verify ownership
+    row = db_fetch_one("SELECT user_id FROM recovery_mentorships WHERE id = %s AND mentor_id = %s::text", (request_id, request_id)) # Wait, mentor_id should match
+    # Re-fetch correctly
+    row = db_fetch_one("SELECT user_id, mentor_id FROM recovery_mentorships WHERE id = %s", (request_id,))
+    if not row or str(row[1]) != str(request.user_id):
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    mentee_id = row[0]
+    db_execute("UPDATE recovery_mentorships SET status = %s WHERE id = %s", (status, request_id))
+    
+    # Notify user
+    mentor_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
+    mentor_name = mentor_row[0] if mentor_row else "Mentor"
+    send_telegram_notification(mentee_id, f"🤝 Your mentorship request to {mentor_name} was {status}!")
+    
+    return jsonify({"success": True})
+
+@app.route("/api/user/active-mentorship", methods=["GET"])
+@require_auth
+def active_mentorship():
+    # As a user, get my mentor
+    row = db_fetch_one("""
+        SELECT m.id, u.user_id, u.anonymous_name, m.status 
+        FROM recovery_mentorships m 
+        JOIN users u ON m.mentor_id = u.user_id 
+        WHERE m.user_id = %s::text AND m.status IN ('pending', 'active')
+    """, (request.user_id,))
+    if not row:
+        return jsonify(None)
+    return jsonify({"id": row[0], "mentor_id": row[1], "name": row[2], "status": row[3]})
+
 
 @app.route("/api/sessions", methods=["GET"])
 @require_auth
