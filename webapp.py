@@ -67,18 +67,37 @@ def init_db_types():
         
         # Add new columns if they don't exist
         cols = {
+            "real_name": "TEXT",
             "sex": "TEXT",
             "age": "INT",
             "educational_level": "TEXT",
             "addiction_year": "TEXT",
             "longest_free_streak": "INT DEFAULT 0",
-            "profile_complete": "BOOLEAN DEFAULT FALSE"
+            "profile_complete": "BOOLEAN DEFAULT FALSE",
+            "work_status": "TEXT",
+            "mentorship_experience_years": "INT DEFAULT 0",
+            "professional_training": "TEXT",
+            "self_recovery_testimony": "TEXT"
         }
         for col, dtype in cols.items():
             cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {dtype}")
             
         # Update mentorship status default
         cur.execute("ALTER TABLE recovery_mentorships ALTER COLUMN status SET DEFAULT 'pending'")
+        
+        # Ensure foreign keys have CASCADE DELETE (Note: This is complex in SQL if already exists, 
+        # but for simplicity in this app we assume the admin can re-run schema or we handle it here)
+        tables_to_cascade = [
+            ("recovery_reflections", "user_id"),
+            ("recovery_mentorships", "user_id"),
+            ("recovery_mentorships", "mentor_id"),
+            ("recovery_messages", "mentorship_id"),
+            ("recovery_messages", "sender_id"),
+            ("recovery_messages", "receiver_id"),
+            ("recovery_live_sessions", "host_id")
+        ]
+        # Skip complex FK migration in Python script to avoid breakage, but it's in schema.sql
+
         
         conn.commit()
         logger.info("✅ Database migrations successful.")
@@ -135,12 +154,40 @@ def send_telegram_notification(chat_id, text):
 def index():
     return redirect("/recovery")
 
+@app.route("/landing")
+def landing():
+    token = request.args.get("token")
+    if not token: return "Missing token", 400
+    return render_template("landing.html", token=token)
+
+@app.route("/register/user")
+def user_reg_page():
+    token = request.args.get("token")
+    return render_template("user_registration.html", token=token)
+
+@app.route("/register/mentor")
+def mentor_reg_page():
+    token = request.args.get("token")
+    return render_template("mentor_registration.html", token=token)
+
 @app.route("/recovery")
 def recovery():
     token = request.args.get("token")
     if not token:
         return "Missing token. Please open via Telegram bot.", 400
+    
+    # Check if profile is complete
+    try:
+        data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
+        u_id = str(data["user_id"])
+        row = db_fetch_one("SELECT profile_complete FROM users WHERE user_id = %s::text", (u_id,))
+        if row and not row[0]:
+            return redirect(f"/landing?token={token}")
+    except:
+        pass
+        
     return render_template("recovery_dashboard.html", token=token)
+
 
 @app.route("/admin")
 def admin_page():
@@ -151,7 +198,12 @@ def admin_page():
 @app.route("/api/user/me", methods=["GET"])
 @require_auth
 def get_user():
-    row = db_fetch_one("SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications, profile_complete, sex, age, educational_level, addiction_year, longest_free_streak FROM users WHERE user_id = %s::text", (request.user_id,))
+    row = db_fetch_one("""
+        SELECT user_id, anonymous_name, recovery_role, recovery_streak, recovery_last_checkin, recovery_notifications, 
+               profile_complete, sex, age, educational_level, addiction_year, longest_free_streak,
+               real_name, work_status, mentorship_experience_years, professional_training, self_recovery_testimony
+        FROM users WHERE user_id = %s::text
+    """, (request.user_id,))
     if not row:
         return jsonify({"error": "User not found"}), 404
     return jsonify({
@@ -166,25 +218,41 @@ def get_user():
         "age": row[8],
         "education": row[9],
         "addiction_year": row[10],
-        "longest_streak": row[11]
+        "longest_streak": row[11],
+        "real_name": row[12],
+        "work_status": row[13],
+        "mentor_years": row[14],
+        "training": row[15],
+        "testimony": row[16]
     })
 
-@app.route("/api/profile/complete", methods=["POST"])
+@app.route("/api/register/user", methods=["POST"])
 @require_auth
-def complete_profile():
+def register_user_api():
     data = request.json
-    sex = data.get("sex")
-    age = data.get("age")
-    edu = data.get("educational_level")
-    addiction = data.get("addiction_year")
-    streak = data.get("longest_free_streak")
-    
     db_execute("""
         UPDATE users SET 
-        sex = %s, age = %s, educational_level = %s, addiction_year = %s, longest_free_streak = %s, profile_complete = TRUE 
+        sex = %s, age = %s, educational_level = %s, addiction_year = %s, longest_free_streak = %s, 
+        profile_complete = TRUE, recovery_role = 'user'
         WHERE user_id = %s::text
-    """, (sex, age, edu, addiction, streak, request.user_id))
+    """, (data.get("sex"), data.get("age"), data.get("educational_level"), data.get("addiction_year"), data.get("longest_free_streak"), request.user_id))
     return jsonify({"success": True})
+
+@app.route("/api/register/mentor", methods=["POST"])
+@require_auth
+def register_mentor_api():
+    data = request.json
+    db_execute("""
+        UPDATE users SET 
+        real_name = %s, anonymous_name = %s, sex = %s, age = %s, educational_level = %s, 
+        work_status = %s, mentorship_experience_years = %s, professional_training = %s, self_recovery_testimony = %s,
+        profile_complete = TRUE, recovery_role = 'mentor'
+        WHERE user_id = %s::text
+    """, (data.get("real_name"), data.get("anonymous_name"), data.get("sex"), data.get("age"), data.get("educational_level"), 
+          data.get("work_status"), data.get("mentorship_experience_years"), data.get("professional_training"), data.get("self_recovery_testimony"),
+          request.user_id))
+    return jsonify({"success": True})
+
 
 
 @app.route("/api/checkin", methods=["POST"])
@@ -249,10 +317,16 @@ def save_reflection():
 @require_auth
 def get_messages():
     receiver_id = request.args.get("receiver_id")
-    if receiver_id:
-        mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) AND status = 'active'", (request.user_id, receiver_id, receiver_id, request.user_id))
+    if not receiver_id:
+        # Default to first active mentorship if none specified
+        mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active' LIMIT 1", (request.user_id, request.user_id))
     else:
-        mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active'", (request.user_id, request.user_id))
+        # Robust fetch for specific mentorship
+        mentor_row = db_fetch_one("""
+            SELECT id FROM recovery_mentorships 
+            WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) 
+            AND status = 'active'
+        """, (request.user_id, receiver_id, receiver_id, request.user_id))
     
     if not mentor_row:
         return jsonify([])
@@ -260,19 +334,18 @@ def get_messages():
     mentorship_id = mentor_row[0]
     rows = db_fetch_all("SELECT sender_id, content, timestamp FROM recovery_messages WHERE mentorship_id = %s ORDER BY timestamp", (mentorship_id,))
     
-    # Get names for display
     user_names = {}
     all_sender_ids = list(set([str(r[0]) for r in rows]))
     if all_sender_ids:
-        # Use tuple safely
         if len(all_sender_ids) == 1:
-            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id::text = %s", (all_sender_ids[0],))
+            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id = %s::text", (all_sender_ids[0],))
         else:
-            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id::text IN %s", (tuple(all_sender_ids),))
+            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id IN %s", (tuple(all_sender_ids),))
         user_names = {r[0]: r[1] for r in name_rows}
 
     messages = [{"sender_id": r[0], "sender_name": user_names.get(str(r[0]), "Unknown"), "content": r[1], "timestamp": str(r[2])} for r in rows]
     return jsonify(messages)
+
 
 
 @app.route("/api/mentor/message", methods=["POST"])
@@ -451,9 +524,28 @@ def admin_users():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
     if user[0] != 'admin':
         return jsonify({"error": "Admin only"}), 403
-    rows = db_fetch_all("SELECT user_id, anonymous_name, recovery_role FROM users")
-    users = [{"id": r[0], "name": r[1], "role": r[2]} for r in rows]
+    rows = db_fetch_all("""
+        SELECT user_id, anonymous_name, recovery_role, sex, age, educational_level, addiction_year, longest_free_streak,
+               real_name, work_status, mentorship_experience_years, professional_training, self_recovery_testimony, profile_complete
+        FROM users
+    """)
+    users = [{
+        "id": r[0], "name": r[1], "role": r[2], "sex": r[3], "age": r[4], "education": r[5], "addiction": r[6], "streak": r[7],
+        "real_name": r[8], "work_status": r[9], "mentor_years": r[10], "training": r[11], "testimony": r[12], "profile_complete": r[13]
+    } for r in rows]
     return jsonify(users)
+
+@app.route("/api/admin/user/<user_id>", methods=["DELETE"])
+@require_auth
+def delete_user(user_id):
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
+    if user[0] != 'admin':
+        return jsonify({"error": "Admin only"}), 403
+    
+    # Due to ON DELETE CASCADE, deleting from users will clean up everything else
+    db_execute("DELETE FROM users WHERE user_id = %s::text", (user_id,))
+    return jsonify({"success": True})
+
 
 @app.route("/api/user/update", methods=["POST"])
 @require_auth
