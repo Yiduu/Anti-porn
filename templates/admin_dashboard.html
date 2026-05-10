@@ -103,6 +103,14 @@
     </div>
 
 
+    <div class="glass-card">
+        <h2>User Profiles & Data</h2>
+        <div id="user-profiles-list">
+            <!-- Detailed profiles will load here -->
+            <div style="text-align: center; padding: 20px; color: var(--text-dim);">Loading profiles...</div>
+        </div>
+    </div>
+
     <script>
         const token = "{{ token }}";
         
@@ -111,51 +119,82 @@
                 headers: { "Authorization": token, "Content-Type": "application/json" },
                 ...options
             });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || "API Error");
+            }
             return res.json();
         }
 
-        async function broadcast() {
-            const msg = document.getElementById("broadcast-msg").value;
-            if (!msg) return alert("Message cannot be empty");
-            if (!confirm("Send this message to ALL users via Telegram?")) return;
-            
-            await apiFetch("/api/admin/broadcast", {
-                method: "POST",
-                body: JSON.stringify({ message: msg })
-            });
-            alert("Broadcast sent!");
-            document.getElementById("broadcast-msg").value = "";
+        async function loadData() {
+            try {
+                const users = await apiFetch("/api/admin/users");
+                renderUsersTable(users);
+                renderUserProfiles(users);
+                renderSelects(users);
+            } catch (e) {
+                alert(e.message);
+            }
         }
 
-
-        async function loadUsers() {
-            const users = await apiFetch("/api/admin/users");
+        function renderUsersTable(users) {
             const tbody = document.getElementById("user-rows");
-            const menteeSelect = document.getElementById("mentee-select");
-            const mentorSelect = document.getElementById("mentor-select");
-            
-            tbody.innerHTML = "";
-            menteeSelect.innerHTML = "<option value=''>Select Mentee</option>";
-            mentorSelect.innerHTML = "<option value=''>Select Mentor</option>";
-
-            users.forEach(u => {
+            tbody.innerHTML = users.map(u => {
                 const badgeClass = u.role === 'admin' ? 'badge-admin' : (u.role === 'mentor' ? 'badge-mentor' : 'badge-user');
-                tbody.innerHTML += `
+                return `
                     <tr>
                         <td>${u.name}<br><small style="color: #666;">${u.id}</small></td>
                         <td><span class="badge ${badgeClass}">${u.role}</span></td>
                         <td>
                             <button class="btn" onclick="setRole('${u.id}', 'mentor')">Make Mentor</button>
                             <button class="btn" onclick="setRole('${u.id}', 'user')" style="background: #333; color: #fff;">Reset</button>
+                            <button class="btn" onclick="deleteUser('${u.id}')" style="background: #ff5555; color: #fff;">Delete</button>
                         </td>
                     </tr>
                 `;
-                
-                menteeSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
-                if (u.role === 'mentor') {
-                    mentorSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
-                }
-            });
+            }).join("");
+        }
+
+        function renderUserProfiles(users) {
+            const container = document.getElementById("user-profiles-list");
+            container.innerHTML = users.map(u => `
+                <div class="glass-card" style="background: rgba(255,255,255,0.02); margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; cursor: pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                        <div>
+                            <strong>${u.name}</strong> (${u.role})
+                            <div style="font-size: 11px; color: var(--text-dim);">ID: ${u.id} | ${u.profile_complete ? '✅ Profile Complete' : '⚠️ Incomplete'}</div>
+                        </div>
+                        <i data-lucide="chevron-down"></i>
+                    </div>
+                    <div style="display: none; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px; font-size: 13px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div><span style="color: var(--text-dim);">Sex:</span> ${u.sex || 'N/A'}</div>
+                            <div><span style="color: var(--text-dim);">Age:</span> ${u.age || 'N/A'}</div>
+                            <div><span style="color: var(--text-dim);">Education:</span> ${u.education || 'N/A'}</div>
+                            <div><span style="color: var(--text-dim);">Addiction Start:</span> ${u.addiction || 'N/A'}</div>
+                            <div><span style="color: var(--text-dim);">Best Streak:</span> ${u.streak || 0} days</div>
+                        </div>
+                        ${u.role === 'mentor' ? `
+                            <div style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
+                                <div style="margin-bottom: 5px;"><strong style="color: var(--accent);">Mentor Details:</strong></div>
+                                <div><span style="color: var(--text-dim);">Real Name:</span> ${u.real_name || 'N/A'}</div>
+                                <div><span style="color: var(--text-dim);">Work Status:</span> ${u.work_status || 'N/A'}</div>
+                                <div><span style="color: var(--text-dim);">Exp Years:</span> ${u.mentor_years || 0}</div>
+                                <div style="margin-top: 5px;"><span style="color: var(--text-dim);">Training:</span><br>${u.training || 'None'}</div>
+                                <div style="margin-top: 5px;"><span style="color: var(--text-dim);">Testimony:</span><br>${u.testimony || 'Not shared'}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join("");
+            lucide.createIcons();
+        }
+
+        function renderSelects(users) {
+            const menteeSelect = document.getElementById("mentee-select");
+            const mentorSelect = document.getElementById("mentor-select");
+            menteeSelect.innerHTML = "<option value=''>Select Mentee</option>" + users.map(u => `<option value="${u.id}">${u.name}</option>`).join("");
+            mentorSelect.innerHTML = "<option value=''>Select Mentor</option>" + users.filter(u => u.role === 'mentor').map(u => `<option value="${u.id}">${u.name}</option>`).join("");
         }
 
         async function setRole(userId, role) {
@@ -164,7 +203,14 @@
                 body: JSON.stringify({ user_id: userId, role: role })
             });
             alert("Role updated!");
-            loadUsers();
+            loadData();
+        }
+
+        async function deleteUser(userId) {
+            if (!confirm("Are you SURE? This will delete the user and all their reflections, messages, and mentorships FOREVER.")) return;
+            await apiFetch(`/api/admin/user/${userId}`, { method: "DELETE" });
+            alert("User deleted.");
+            loadData();
         }
 
         async function assignMentor() {
@@ -195,7 +241,21 @@
             document.getElementById("session-time").value = "";
         }
 
-        loadUsers();
+        async function broadcast() {
+            const msg = document.getElementById("broadcast-msg").value;
+            if (!msg) return alert("Message cannot be empty");
+            if (!confirm("Send this message to ALL users via Telegram?")) return;
+            
+            await apiFetch("/api/admin/broadcast", {
+                method: "POST",
+                body: JSON.stringify({ message: msg })
+            });
+            alert("Broadcast sent!");
+            document.getElementById("broadcast-msg").value = "";
+        }
+
+        loadData();
     </script>
 </body>
 </html>
+
