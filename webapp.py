@@ -366,24 +366,32 @@ def save_reflection():
 @require_auth
 def get_messages():
     receiver_id = request.args.get("receiver_id")
-    # Find active mentorship between current user and receiver
+    current_user_id = request.user_id
+    
+    # Find the active mentorship between current user and the other user
     if receiver_id:
+        # Case 1: current user is mentor, receiver is mentee (user_id)
+        # Case 2: current user is mentee, receiver is mentor
         mentorship = db_fetch_one("""
             SELECT id FROM recovery_mentorships
-            WHERE ((user_id = %s::text AND mentor_id = %s::text)
-                OR (user_id = %s::text AND mentor_id = %s::text))
-            AND status = 'active'
-        """, (request.user_id, receiver_id, receiver_id, request.user_id))
+            WHERE status = 'active'
+            AND (
+                (mentor_id = %s::text AND user_id = %s::text)
+                OR
+                (mentor_id = %s::text AND user_id = %s::text)
+            )
+        """, (current_user_id, receiver_id, receiver_id, current_user_id))
     else:
-        # For regular user without specifying, get their active mentor
+        # No receiver specified: get the active mentorship for the current user
         mentorship = db_fetch_one("""
             SELECT id FROM recovery_mentorships
-            WHERE (user_id = %s::text OR mentor_id = %s::text)
-            AND status = 'active' LIMIT 1
-        """, (request.user_id, request.user_id))
+            WHERE status = 'active'
+            AND (user_id = %s::text OR mentor_id = %s::text)
+            LIMIT 1
+        """, (current_user_id, current_user_id))
     
     if not mentorship:
-        return jsonify([])  # No active mentorship, return empty
+        return jsonify([])  # No active mentorship
     
     mentorship_id = mentorship[0]
     rows = db_fetch_all("""
@@ -401,6 +409,7 @@ def get_messages():
         "sender_name": r[3]
     } for r in rows]
     return jsonify(messages)
+
 
 
 
