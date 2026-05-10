@@ -165,17 +165,37 @@ def index():
 def landing():
     token = request.args.get("token")
     if not token: return "Missing token", 400
+    try:
+        data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
+        if str(data.get("user_id")) == str(ADMIN_ID):
+            return redirect(f"/recovery?token={token}")
+    except:
+        pass
     return render_template("landing.html", token=token)
+
 
 @app.route("/register/user")
 def user_reg_page():
     token = request.args.get("token")
+    try:
+        data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
+        if str(data.get("user_id")) == str(ADMIN_ID):
+            return redirect(f"/recovery?token={token}")
+    except:
+        pass
     return render_template("user_registration.html", token=token)
 
 @app.route("/register/mentor")
 def mentor_reg_page():
     token = request.args.get("token")
+    try:
+        data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
+        if str(data.get("user_id")) == str(ADMIN_ID):
+            return redirect(f"/recovery?token={token}")
+    except:
+        pass
     return render_template("mentor_registration.html", token=token)
+
 
 @app.route("/recovery")
 def recovery():
@@ -236,6 +256,8 @@ def get_user():
 @app.route("/api/register/user", methods=["POST"])
 @require_auth
 def register_user_api():
+    if str(request.user_id) == str(ADMIN_ID):
+        return jsonify({"error": "Admin cannot register"}), 403
     data = request.json
     db_execute("""
         UPDATE users SET 
@@ -245,9 +267,12 @@ def register_user_api():
     """, (data.get("sex"), data.get("age"), data.get("educational_level"), data.get("addiction_year"), data.get("longest_free_streak"), request.user_id))
     return jsonify({"success": True})
 
+
 @app.route("/api/register/mentor", methods=["POST"])
 @require_auth
 def register_mentor_api():
+    if str(request.user_id) == str(ADMIN_ID):
+        return jsonify({"error": "Admin cannot register"}), 403
     data = request.json
     # Explicitly set role to mentor, never admin
     db_execute("""
@@ -260,6 +285,7 @@ def register_mentor_api():
           data.get("work_status"), data.get("mentorship_experience_years"), data.get("professional_training"), data.get("self_recovery_testimony"),
           request.user_id))
     return jsonify({"success": True})
+
 
 
 
