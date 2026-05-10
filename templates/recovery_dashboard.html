@@ -353,30 +353,33 @@
                 updateSplash("Still loading... This may take a moment on slow connections.");
             }, 3500);
 
-            const failTimer = setTimeout(() => {
-                updateSplash("Connection taking longer than expected. Please check your signal.", true);
-            }, 12000);
-
             try {
                 // 3. Ping Server (Wake up Render instance)
-                updateSplash("Connecting to sanctuary...");
-                await retryFetch("/ping", { timeout: 10000 }, 5); // More retries for cold start
+                updateSplash("Waking up the sanctuary...");
+                try {
+                    await fetchWithTimeout('/ping', { method: 'HEAD' }, 8000);
+                    console.log("Server awake");
+                } catch(e) {
+                    console.warn("Ping failed, continuing anyway...", e);
+                }
 
                 // 4. Authenticate & Load Profile
                 updateSplash("Authenticating...");
                 user = await api("/api/user/me");
                 if (!user) throw new Error("Authentication failed");
 
-                // Check profile completion
+                // Check profile completion (Admin always complete)
                 if (!user.profile_complete && user.role !== 'admin') {
-                    window.location.href = "/landing?token=" + token;
+                    updateSplash("Registration required – redirecting...");
+                    setTimeout(() => {
+                        window.location.href = `/landing?token=${token}`;
+                    }, 500);
                     return;
                 }
 
                 // 5. Finalize UI
                 updateSplash("Preparing your dashboard...");
                 clearTimeout(slowTimer);
-                clearTimeout(failTimer);
                 
                 await finalizeInit();
 
@@ -385,16 +388,16 @@
                     const splash = document.getElementById("splash-screen");
                     splash.style.opacity = "0";
                     setTimeout(() => splash.style.display = "none", 500);
-                }, 600);
+                }, 400);
 
             } catch (e) {
-                console.error("Initialization failed:", e);
-                updateSplash("Unable to reach the server. Please try again.", true);
+                console.error("Init error:", e);
+                updateSplash(`⚠️ ${e.message || 'Connection failed. Please try again.'}`, true);
             }
         };
 
         async function finalizeInit() {
-            document.getElementById("user-name").innerText = user.name || "Warrior";
+            if (!user) return;
             document.getElementById("user-avatar").innerText = (user.name || "W")[0];
             document.getElementById("profile-display-name").innerText = user.name || "Warrior";
             document.getElementById("profile-avatar").innerText = (user.name || "W")[0];
