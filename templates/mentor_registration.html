@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CRC - Mentor Setup</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0a0a;
+            --accent: #FFD700;
+            --text-main: #FFFFFF;
+            --text-dim: #A0A0A0;
+            --glass-bg: rgba(30, 30, 47, 0.95);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg-dark);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            padding: 20px;
+        }
+        .container { max-width: 450px; margin: 0 auto; }
+        h1 { font-family: 'Outfit', sans-serif; margin-bottom: 20px; text-align: center; }
+        .form-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 8px; margin-top: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+        select, input, textarea {
+            width: 100%;
+            background: #1e1e2f;
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 14px;
+            color: #fff;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+            font-family: inherit;
+        }
+        select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+        option { background: #2a2a3a; color: #fff; }
+        textarea { height: 120px; resize: none; }
+        .btn-primary {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 16px;
+            border-radius: 16px;
+            width: 100%;
+            font-weight: 700;
+            font-size: 16px;
+            margin-top: 30px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mentor Profile</h1>
+        <div class="form-card">
+            <label>Full Real Name (Admin Only)</label>
+            <input type="text" id="real_name" placeholder="John Doe">
+
+            <label>Public Anonymous Name</label>
+            <input type="text" id="anon_name" placeholder="Mentor_Warrior">
+
+            <label>Sex</label>
+            <select id="sex">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+            </select>
+
+            <label>Age</label>
+            <input type="number" id="age" placeholder="35">
+
+            <label>Educational Level</label>
+            <input type="text" id="edu" placeholder="e.g. Master in Psychology">
+
+            <label>Work Status</label>
+            <select id="work">
+                <option value="Employed full-time">Employed full-time</option>
+                <option value="Employed part-time">Employed part-time</option>
+                <option value="Student">Student</option>
+                <option value="Unemployed">Unemployed</option>
+                <option value="Retired">Retired</option>
+            </select>
+
+            <label>Years of Mentorship Experience</label>
+            <input type="number" id="exp" placeholder="5">
+
+            <label>Professional Training</label>
+            <textarea id="training" placeholder="Certified Christian Counselor, Pastoral Care..."></textarea>
+
+            <label>Self-Recovery Testimony</label>
+            <textarea id="testimony" placeholder="Share your recovery journey..."></textarea>
+
+            <button class="btn-primary" onclick="submit()">Submit Mentor Application</button>
+        </div>
+    </div>
+    <script>
+        const token = "{{ token }}";
+        async function submit() {
+            const data = {
+                real_name: document.getElementById("real_name").value,
+                anonymous_name: document.getElementById("anon_name").value,
+                sex: document.getElementById("sex").value,
+                age: document.getElementById("age").value,
+                educational_level: document.getElementById("edu").value,
+                work_status: document.getElementById("work").value,
+                mentorship_experience_years: document.getElementById("exp").value,
+                professional_training: document.getElementById("training").value,
+                self_recovery_testimony: document.getElementById("testimony").value
+            };
+            const res = await fetch("/api/register/mentor", {
+                method: "POST",
+                headers: { "Authorization": token, "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) window.location.href = "/recovery?token=" + token;
+            else alert("Error saving mentor profile.");
+        }
+    </script>
+</body>
+</html>
