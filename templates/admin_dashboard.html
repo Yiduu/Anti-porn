@@ -2,260 +2,177 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Admin - Recovery Companion</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CRC Admin - Sanctuary Control</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         :root {
-            --bg-dark: #0a0a0a;
-            --card-bg: rgba(25, 25, 25, 0.8);
+            --bg-gradient: radial-gradient(circle at 10% 20%, #1a1a2e, #0a0a0a);
             --accent: #FFD700;
+            --accent-red: #ff5555;
             --text-main: #FFFFFF;
             --text-dim: #A0A0A0;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
         }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background-color: var(--bg-dark);
+            background: var(--bg-gradient);
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
-            padding: 20px;
+            padding: 24px;
+            min-height: 100vh;
         }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1, h2 { font-family: 'Outfit', sans-serif; margin-bottom: 24px; }
+        
         .glass-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 24px;
         }
-        h1, h2 { font-family: 'Outfit', sans-serif; margin-bottom: 20px; }
-        .user-list { width: 100%; border-collapse: collapse; }
-        .user-list th, .user-list td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
-        .badge-admin { background: rgba(255, 0, 0, 0.2); color: #ff5555; }
-        .badge-mentor { background: rgba(0, 255, 0, 0.2); color: #55ff55; }
-        .badge-user { background: rgba(255, 255, 255, 0.1); color: #fff; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        th { color: var(--accent); font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
+        
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .badge-admin { background: rgba(255, 0, 0, 0.1); color: var(--accent-red); border: 1px solid rgba(255,0,0,0.2); }
+        .badge-mentor { background: rgba(0, 255, 0, 0.1); color: #55ff55; border: 1px solid rgba(0,255,0,0.2); }
+        .badge-user { background: rgba(255, 255, 255, 0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); }
+
         .btn {
-            background: var(--accent);
-            color: #000;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 12px;
-            margin-right: 5px;
+            background: var(--accent); color: #000; border: none; padding: 8px 16px;
+            border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 12px;
+            transition: all 0.2s;
         }
-        .select-input {
-            background: #1a1a1a;
-            color: #fff;
-            border: 1px solid #333;
-            padding: 8px;
-            border-radius: 8px;
+        .btn:active { transform: scale(0.95); }
+        
+        input, select, textarea {
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
+            border-radius: 12px; padding: 12px; color: #fff; margin-bottom: 15px; outline: none;
         }
     </style>
 </head>
 <body>
-    <h1>Admin Panel</h1>
-    
-    <div class="glass-card">
-        <h2>Users Management</h2>
-        <table class="user-list">
-            <thead>
-                <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="user-rows">
-                <!-- Data will be loaded here -->
-            </tbody>
-        </table>
-    </div>
-
-    <div class="glass-card">
-        <h2>Create Live Session</h2>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <input type="text" id="session-title" class="select-input" placeholder="Session Title (e.g. Weekly Prayer)">
-            <textarea id="session-desc" class="select-input" placeholder="Description"></textarea>
-            <input type="datetime-local" id="session-time" class="select-input">
-            <button class="btn" style="width: 100%; padding: 15px;" onclick="createSession()">Schedule Session</button>
+    <div class="container">
+        <h1>Admin Control</h1>
+        
+        <div class="glass-card">
+            <h2>Users Management</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Role</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="user-rows"></tbody>
+            </table>
         </div>
-    </div>
 
-    <div class="glass-card">
-        <h2>Assign Mentorship</h2>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <select id="mentee-select" class="select-input"><option>Select Mentee</option></select>
-            <select id="mentor-select" class="select-input"><option>Select Mentor</option></select>
-            <button class="btn" style="width: 100%; padding: 15px;" onclick="assignMentor()">Assign Relationship</button>
+        <div class="glass-card">
+            <h2>Detailed Profiles</h2>
+            <div id="user-profiles-list"></div>
         </div>
-    </div>
 
-    <div class="glass-card">
-        <h2>Broadcast Message</h2>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <textarea id="broadcast-msg" class="select-input" placeholder="Message to all users..."></textarea>
-            <button class="btn" style="width: 100%; padding: 15px; background: #ff5555; color: #fff;" onclick="broadcast()">Send Broadcast Notification</button>
-        </div>
-    </div>
-
-
-    <div class="glass-card">
-        <h2>User Profiles & Data</h2>
-        <div id="user-profiles-list">
-            <!-- Detailed profiles will load here -->
-            <div style="text-align: center; padding: 20px; color: var(--text-dim);">Loading profiles...</div>
+        <div class="glass-card">
+            <h2>Broadcast & Tools</h2>
+            <textarea id="broadcast-msg" placeholder="Global message to all users..."></textarea>
+            <button class="btn" style="width: 100%; padding: 15px;" onclick="broadcast()">Send Global Notification</button>
+            
+            <div style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 24px;">
+                <h3 style="margin-bottom: 15px;">Manual Mentorship</h3>
+                <select id="mentee-select"></select>
+                <select id="mentor-select"></select>
+                <button class="btn" style="width: 100%;" onclick="assignMentor()">Assign Relationship</button>
+            </div>
         </div>
     </div>
 
     <script>
         const token = "{{ token }}";
         
-        async function apiFetch(path, options={}) {
+        async function api(path, options={}) {
             const res = await fetch(path, {
                 headers: { "Authorization": token, "Content-Type": "application/json" },
                 ...options
             });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || "API Error");
-            }
             return res.json();
         }
 
         async function loadData() {
-            try {
-                const users = await apiFetch("/api/admin/users");
-                renderUsersTable(users);
-                renderUserProfiles(users);
-                renderSelects(users);
-            } catch (e) {
-                alert(e.message);
-            }
+            const users = await api("/api/admin/users");
+            renderTable(users);
+            renderProfiles(users);
+            renderSelects(users);
         }
 
-        function renderUsersTable(users) {
+        function renderTable(users) {
             const tbody = document.getElementById("user-rows");
-            tbody.innerHTML = users.map(u => {
-                const badgeClass = u.role === 'admin' ? 'badge-admin' : (u.role === 'mentor' ? 'badge-mentor' : 'badge-user');
-                return `
-                    <tr>
-                        <td>${u.name}<br><small style="color: #666;">${u.id}</small></td>
-                        <td><span class="badge ${badgeClass}">${u.role}</span></td>
-                        <td>
-                            <button class="btn" onclick="setRole('${u.id}', 'mentor')">Make Mentor</button>
-                            <button class="btn" onclick="setRole('${u.id}', 'user')" style="background: #333; color: #fff;">Reset</button>
-                            <button class="btn" onclick="deleteUser('${u.id}')" style="background: #ff5555; color: #fff;">Delete</button>
-                        </td>
-                    </tr>
-                `;
-            }).join("");
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.name}<br><small style="color:var(--text-dim)">${u.id}</small></td>
+                    <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : (u.role === 'mentor' ? 'badge-mentor' : 'badge-user')}">${u.role}</span></td>
+                    <td>
+                        <button class="btn" onclick="setRole('${u.id}', 'mentor')">Mentor</button>
+                        <button class="btn" style="background:#444;color:#fff" onclick="setRole('${u.id}', 'user')">User</button>
+                        <button class="btn" style="background:var(--accent-red);color:#fff" onclick="deleteUser('${u.id}')">Del</button>
+                    </td>
+                </tr>
+            `).join("");
         }
 
-        function renderUserProfiles(users) {
-            const container = document.getElementById("user-profiles-list");
-            container.innerHTML = users.map(u => `
-                <div class="glass-card" style="background: rgba(255,255,255,0.02); margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; cursor: pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-                        <div>
-                            <strong>${u.name}</strong> (${u.role})
-                            <div style="font-size: 11px; color: var(--text-dim);">ID: ${u.id} | ${u.profile_complete ? '✅ Profile Complete' : '⚠️ Incomplete'}</div>
-                        </div>
-                        <i data-lucide="chevron-down"></i>
-                    </div>
-                    <div style="display: none; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px; font-size: 13px;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div><span style="color: var(--text-dim);">Sex:</span> ${u.sex || 'N/A'}</div>
-                            <div><span style="color: var(--text-dim);">Age:</span> ${u.age || 'N/A'}</div>
-                            <div><span style="color: var(--text-dim);">Education:</span> ${u.education || 'N/A'}</div>
-                            <div><span style="color: var(--text-dim);">Addiction Start:</span> ${u.addiction || 'N/A'}</div>
-                            <div><span style="color: var(--text-dim);">Best Streak:</span> ${u.streak || 0} days</div>
-                        </div>
-                        ${u.role === 'mentor' ? `
-                            <div style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
-                                <div style="margin-bottom: 5px;"><strong style="color: var(--accent);">Mentor Details:</strong></div>
-                                <div><span style="color: var(--text-dim);">Real Name:</span> ${u.real_name || 'N/A'}</div>
-                                <div><span style="color: var(--text-dim);">Work Status:</span> ${u.work_status || 'N/A'}</div>
-                                <div><span style="color: var(--text-dim);">Exp Years:</span> ${u.mentor_years || 0}</div>
-                                <div style="margin-top: 5px;"><span style="color: var(--text-dim);">Training:</span><br>${u.training || 'None'}</div>
-                                <div style="margin-top: 5px;"><span style="color: var(--text-dim);">Testimony:</span><br>${u.testimony || 'Not shared'}</div>
-                            </div>
-                        ` : ''}
-                    </div>
+        function renderProfiles(users) {
+            const list = document.getElementById("user-profiles-list");
+            list.innerHTML = users.map(u => `
+                <div class="glass-card" style="background:rgba(255,255,255,0.01); margin-bottom:10px; cursor:pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                    <strong>${u.name}</strong> <small>(${u.role})</small>
+                </div>
+                <div style="display:none; padding:15px; font-size:13px; color:var(--text-dim);">
+                    <p>Sex: ${u.sex || 'N/A'} | Age: ${u.age || 'N/A'}</p>
+                    <p>Education: ${u.education || 'N/A'}</p>
+                    ${u.role === 'mentor' ? `<p>Real Name: ${u.real_name}</p><p>Testimony: ${u.testimony}</p>` : ''}
                 </div>
             `).join("");
-            lucide.createIcons();
         }
 
         function renderSelects(users) {
-            const menteeSelect = document.getElementById("mentee-select");
-            const mentorSelect = document.getElementById("mentor-select");
-            menteeSelect.innerHTML = "<option value=''>Select Mentee</option>" + users.map(u => `<option value="${u.id}">${u.name}</option>`).join("");
-            mentorSelect.innerHTML = "<option value=''>Select Mentor</option>" + users.filter(u => u.role === 'mentor').map(u => `<option value="${u.id}">${u.name}</option>`).join("");
+            const m1 = document.getElementById("mentee-select");
+            const m2 = document.getElementById("mentor-select");
+            m1.innerHTML = "<option>Select Mentee</option>" + users.map(u => `<option value="${u.id}">${u.name}</option>`).join("");
+            m2.innerHTML = "<option>Select Mentor</option>" + users.filter(u => u.role === 'mentor').map(u => `<option value="${u.id}">${u.name}</option>`).join("");
         }
 
-        async function setRole(userId, role) {
-            await apiFetch("/api/admin/set-role", {
-                method: "POST",
-                body: JSON.stringify({ user_id: userId, role: role })
-            });
-            alert("Role updated!");
+        async function setRole(uid, role) {
+            await api("/api/admin/set-role", { method: "POST", body: JSON.stringify({ user_id: uid, role }) });
             loadData();
         }
 
-        async function deleteUser(userId) {
-            if (!confirm("Are you SURE? This will delete the user and all their reflections, messages, and mentorships FOREVER.")) return;
-            await apiFetch(`/api/admin/user/${userId}`, { method: "DELETE" });
-            alert("User deleted.");
-            loadData();
-        }
-
-        async function assignMentor() {
-            const menteeId = document.getElementById("mentee-select").value;
-            const mentorId = document.getElementById("mentor-select").value;
-            if (!menteeId || !mentorId) return alert("Select both users");
-            
-            await apiFetch("/api/admin/assign-mentor", {
-                method: "POST",
-                body: JSON.stringify({ user_id: menteeId, mentor_id: mentorId })
-            });
-            alert("Mentorship assigned!");
-        }
-
-        async function createSession() {
-            const title = document.getElementById("session-title").value;
-            const description = document.getElementById("session-desc").value;
-            const scheduled_time = document.getElementById("session-time").value;
-            if (!title || !scheduled_time) return alert("Title and Time are required");
-
-            await apiFetch("/api/sessions", {
-                method: "POST",
-                body: JSON.stringify({ title, description, scheduled_time })
-            });
-            alert("Session scheduled!");
-            document.getElementById("session-title").value = "";
-            document.getElementById("session-desc").value = "";
-            document.getElementById("session-time").value = "";
+        async function deleteUser(uid) {
+            if (confirm("Delete forever?")) {
+                await api(`/api/admin/user/${uid}`, { method: "DELETE" });
+                loadData();
+            }
         }
 
         async function broadcast() {
             const msg = document.getElementById("broadcast-msg").value;
-            if (!msg) return alert("Message cannot be empty");
-            if (!confirm("Send this message to ALL users via Telegram?")) return;
-            
-            await apiFetch("/api/admin/broadcast", {
-                method: "POST",
-                body: JSON.stringify({ message: msg })
-            });
-            alert("Broadcast sent!");
-            document.getElementById("broadcast-msg").value = "";
+            if (msg) {
+                await api("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ message: msg }) });
+                alert("Broadcast sent!");
+            }
         }
 
         loadData();
+        lucide.createIcons();
     </script>
 </body>
 </html>
-
