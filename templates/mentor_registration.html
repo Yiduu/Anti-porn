@@ -123,11 +123,11 @@
 
     <script>
         const tg = window.Telegram.WebApp;
-        const token = "{{ token }}";
+        const token = new URLSearchParams(window.location.search).get("token");
 
         tg.ready();
         tg.expand();
-        tg.disableVerticalSwipes();
+        try { tg.disableVerticalSwipes(); } catch(e) {}
 
         async function submit() {
             const data = {
