@@ -266,16 +266,20 @@
         let currentChatId = null;
         let chatInterval = null;
 
-        // --- Robust Loading Utilities ---
+        // --- Enhanced Mobile Support & Logging ---
+        function log(msg) {
+            console.log(`[CRC-APP] ${new Date().toISOString()}: ${msg}`);
+        }
 
         function updateSplash(text, isError = false) {
+            log(`Status Update: ${text}${isError ? ' (ERROR)' : ''}`);
             const status = document.getElementById("splash-status");
             const errorBlock = document.getElementById("splash-error");
             if (isError) {
                 status.style.display = "none";
                 errorBlock.style.display = "block";
                 document.getElementById("error-msg").innerText = text;
-                safeHaptic('heavy');
+                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
             } else {
                 status.innerText = text;
                 status.style.display = "block";
@@ -283,25 +287,23 @@
             }
         }
 
-        function safeHaptic(type = 'light') {
-            if (window.Telegram?.WebApp?.HapticFeedback?.impactOccurred) {
-                try { window.Telegram.WebApp.HapticFeedback.impactOccurred(type); } catch(e) {}
+        async function fetchWithTimeout(resource, options = {}) {
+            const { timeout = 10000 } = options; // 10s as requested
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            log(`Fetching ${resource} (timeout: ${timeout}ms)...`);
+            try {
+                const response = await fetch(resource, { ...options, signal: controller.signal });
+                clearTimeout(id);
+                return response;
+            } catch (err) {
+                clearTimeout(id);
+                throw err;
             }
         }
 
-        async function fetchWithTimeout(resource, options = {}) {
-            const { timeout = 15000 } = options;
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeout);
-            const response = await fetch(resource, { ...options, signal: controller.signal });
-            clearTimeout(id);
-            return response;
-        }
-
-        async function retryFetch(path, options = {}, retries = 3) {
-            const cacheBuster = `_=${Date.now()}`;
-            const url = path.includes('?') ? `${path}&${cacheBuster}` : `${path}?${cacheBuster}`;
-            
+        async function api(path, options = {}, retries = 3) {
+            const url = `${path}${path.includes('?') ? '&' : '?'}_=${Date.now()}`;
             for (let i = 0; i < retries; i++) {
                 try {
                     const res = await fetchWithTimeout(url, {
@@ -313,91 +315,108 @@
                         }
                     });
                     if (res.status === 401) {
+                        log("Unauthorized (401) - Redirecting to landing.");
                         window.location.href = "/landing?token=" + token;
                         return;
                     }
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    if (!res.ok) throw new Error(`HTTP Status ${res.status}`);
                     return await res.json();
                 } catch (err) {
-                    console.warn(`Retry ${i+1}/${retries} for ${path} failed:`, err);
+                    log(`Retry ${i+1}/${retries} failed for ${path}: ${err.message}`);
                     if (i === retries - 1) throw err;
-                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i))); // Exponential backoff
+                    const delay = 1000 * Math.pow(2, i); // Exponential backoff
+                    log(`Waiting ${delay}ms before next retry...`);
+                    await new Promise(r => setTimeout(r, delay));
                 }
             }
         }
-
-        // Global API wrapper
-        const api = (path, options) => retryFetch(path, options, 3);
 
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
         }
 
-        // --- App Initialization ---
+        function safeHaptic(type = 'light') {
+            if (tg.HapticFeedback) {
+                try { tg.HapticFeedback.impactOccurred(type); } catch(e) {}
+            }
+        }
 
-        window.onload = async () => {
-            // 1. Initialize WebApp
-            const webAppTimeout = setTimeout(() => {
-                if (!tg.initData) updateSplash("Telegram WebApp failed to initialize. Please restart.", true);
-            }, 5000);
+        // --- App Initialization Sequence ---
 
-            tg.ready();
-            tg.expand();
-            try { tg.disableVerticalSwipes(); } catch(e) {}
-            clearTimeout(webAppTimeout);
-            lucide.createIcons();
-
-            // 2. Slow Connection Handlers
-            const slowTimer = setTimeout(() => {
-                updateSplash("Still loading... This may take a moment on slow connections.");
-            }, 3500);
-
+        async function loadUserAndProfile() {
+            log("Starting loadUserAndProfile sequence...");
             try {
-                // 3. Ping Server (Wake up Render instance)
-                updateSplash("Waking up the sanctuary...");
+                // 1. Ping Server (Waking up Render)
+                updateSplash("Waking up the sanctuary... Please wait.");
                 try {
-                    await fetchWithTimeout('/ping', { method: 'HEAD' }, 8000);
-                    console.log("Server awake");
+                    const pingRes = await fetchWithTimeout('/ping', { method: 'HEAD' }, 5000); // 5s ping
+                    log(`Server ping status: ${pingRes.status}`);
                 } catch(e) {
-                    console.warn("Ping failed, continuing anyway...", e);
+                    log(`Ping attempt finished: ${e.message}. Proceeding...`);
                 }
 
-                // 4. Authenticate & Load Profile
-                updateSplash("Authenticating...");
+                // 2. Load Profile
+                updateSplash("Authenticating your spirit...");
                 user = await api("/api/user/me");
-                if (!user) throw new Error("Authentication failed");
+                
+                if (!user) {
+                    log("User API returned null/empty.");
+                    throw new Error("Unable to retrieve user data.");
+                }
+                log(`User data received: Role=${user.role}, ProfileComplete=${user.profile_complete}`);
 
-                // Check profile completion (Admin always complete)
+                // 3. Check Role & Completion
                 if (!user.profile_complete && user.role !== 'admin') {
-                    updateSplash("Registration required – redirecting...");
+                    log("Profile incomplete for non-admin. Redirecting to registration.");
+                    updateSplash("Setting up your journey...");
                     setTimeout(() => {
-                        window.location.href = `/landing?token=${token}`;
-                    }, 500);
+                        window.location.href = `/landing?token=${token}&_=${Date.now()}`;
+                    }, 800);
                     return;
                 }
 
-                // 5. Finalize UI
+                // 4. Initialize UI Features
                 updateSplash("Preparing your dashboard...");
-                clearTimeout(slowTimer);
-                
                 await finalizeInit();
+                log("UI features initialized.");
 
-                // Smooth Fade Out
+                // 5. Success - Smooth Fade Out
                 setTimeout(() => {
                     const splash = document.getElementById("splash-screen");
                     splash.style.opacity = "0";
-                    setTimeout(() => splash.style.display = "none", 500);
-                }, 400);
+                    setTimeout(() => {
+                        splash.style.display = "none";
+                        log("App fully loaded. Sanctuary opened.");
+                    }, 500);
+                }, 500);
 
             } catch (e) {
-                console.error("Init error:", e);
-                updateSplash(`⚠️ ${e.message || 'Connection failed. Please try again.'}`, true);
+                log(`INITIALIZATION ERROR: ${e.message}`);
+                updateSplash(`⚠️ Sanctuary unreachable: ${e.message || 'Please check your connection.'}`, true);
             }
+        }
+
+        window.onload = () => {
+            log("Window loaded. Initializing WebApp SDK...");
+            tg.ready();
+            tg.expand();
+            try { 
+                tg.disableVerticalSwipes(); 
+                log("Vertical swipes disabled.");
+            } catch(e) { 
+                log("Could not disable vertical swipes (SDK version?)."); 
+            }
+            lucide.createIcons();
+            
+            // Start the loading sequence
+            loadUserAndProfile();
         };
 
         async function finalizeInit() {
             if (!user) return;
+            log("Populating UI elements...");
+            document.getElementById("user-name").innerText = user.name || "Warrior";
             document.getElementById("user-avatar").innerText = (user.name || "W")[0];
             document.getElementById("profile-display-name").innerText = user.name || "Warrior";
             document.getElementById("profile-avatar").innerText = (user.name || "W")[0];
@@ -406,8 +425,12 @@
             document.getElementById("profile-name").value = user.name || "";
             document.getElementById("profile-bio").value = user.bio || "";
             
-            if (user.role === 'admin') document.getElementById("admin-link").style.display = "block";
-            if (user.role === 'mentor' || user.role === 'admin') document.getElementById("mentor-create-session").style.display = "block";
+            if (user.role === 'admin') {
+                document.getElementById("admin-link").style.display = "block";
+            }
+            if (user.role === 'mentor' || user.role === 'admin') {
+                document.getElementById("mentor-create-session").style.display = "block";
+            }
             
             // Background loads
             loadChatList(); 
@@ -415,7 +438,7 @@
             loadSessions();
         }
 
-        // --- Feature Logic (Unchanged but using new api utility) ---
+        // --- Feature Modules (Unchanged logic, utilizing robust API) ---
 
         function showPage(pageId, navItem) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -432,7 +455,7 @@
                     document.getElementById("verse-text").innerText = `"${verse.text}"`;
                     document.getElementById("verse-ref").innerText = verse.reference;
                 }
-            } catch(e) {}
+            } catch(e) { log("Verse load failed."); }
         }
 
         async function checkin(status) {
@@ -452,7 +475,7 @@
             try {
                 const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ reflection_text: input.value }) });
                 if (res.success) { tg.showAlert("Reflection saved."); input.value = ""; safeHaptic('success'); }
-            } catch(e) {}
+            } catch(e) { log("Reflection save failed."); }
         }
 
         async function loadChatList() {
@@ -498,7 +521,7 @@
                     }
                 }
                 lucide.createIcons();
-            } catch (e) { listDiv.innerHTML = "<p>Error loading chats.</p>"; }
+            } catch (e) { log("Chat list load failed."); }
         }
 
         async function loadAvailableMentors() {
@@ -510,7 +533,7 @@
                         <p style="font-size:13px; color:var(--text-dim); margin-bottom:15px;">${escapeHtml(m.bio || "No bio")}</p>
                         <button class="btn-primary" onclick="requestMentor('${m.id}')">Request Mentorship</button>
                     </div>`).join("");
-            } catch(e) {}
+            } catch(e) { log("Available mentors load failed."); }
         }
 
         async function requestMentor(id) { try { await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: id }) }); loadChatList(); safeHaptic('success'); } catch(e) {} }
@@ -547,7 +570,7 @@
                         <div class="msg-info">${escapeHtml(m.sender_name)} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
                     </div>`).join("");
                 if (scroll) container.scrollTop = container.scrollHeight;
-            } catch(e) {}
+            } catch(e) { log("Messages load failed."); }
         }
 
         async function sendMessage() {
@@ -556,7 +579,7 @@
             try {
                 const res = await api("/api/mentor/message", { method: "POST", body: JSON.stringify({ content: input.value, receiver_id: currentChatId }) });
                 if (res.success) { input.value = ""; loadMessages(true); safeHaptic('light'); }
-            } catch(e) {}
+            } catch(e) { log("Message send failed."); }
         }
 
         window.startPrivateVideoCall = () => {
@@ -579,7 +602,7 @@
                         <button class="btn-primary" onclick="joinSession(${s.id})">Join Session</button>
                     </div>`).join("");
                 lucide.createIcons();
-            } catch(e) {}
+            } catch(e) { log("Sessions load failed."); }
         }
 
         async function deleteSession(id) { if (confirm("Delete session?")) { try { await api(`/api/sessions/${id}`, { method: "DELETE" }); loadSessions(); safeHaptic('heavy'); } catch(e) {} } }
@@ -592,7 +615,7 @@
         async function updateProfile() {
             const name = document.getElementById("profile-name").value, bio = document.getElementById("profile-bio").value;
             try {
-                const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ anonymous_name: name, bio }) });
+                const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ name, bio }) });
                 if (res.success) { tg.showAlert("Profile updated!"); user.name = name; user.bio = bio; finalizeInit(); }
             } catch(e) { tg.showAlert("Failed to update profile."); }
         }
