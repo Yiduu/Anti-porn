@@ -82,7 +82,11 @@
 <body>
     <div id="splash-screen">
         <div class="loader-ring"></div>
-        <div class="splash-text">LOADING YOUR SANCTUARY</div>
+        <div class="splash-text" id="splash-status">LOADING YOUR SANCTUARY</div>
+        <div id="splash-error" style="display: none; margin-top: 20px; text-align: center; padding: 0 40px;">
+            <p style="color: #ff5555; margin-bottom: 20px; font-size: 14px; line-height: 1.4;" id="error-msg">Connection lost</p>
+            <button class="btn-primary" onclick="location.reload()" style="width: auto; padding: 12px 40px; background: var(--gold-gradient); color: #000; border: none; border-radius: 12px; font-weight: 700;">RETRY CONNECTION</button>
+        </div>
     </div>
 
     <div class="container fade-in">
@@ -102,35 +106,44 @@
             <div class="icon-box"><i data-lucide="heart-handshake" style="width: 28px; height: 28px;"></i></div>
             <div class="role-info">
                 <h3>Join as Mentor</h3>
-                <p>Guide others through your testimony and professional experience.</p>
+                <p>Guide others through faith-based mentorship and support.</p>
             </div>
         </div>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
-        const token = "{{ token }}";
+        const token = new URLSearchParams(window.location.search).get("token");
 
-        async function retryWithBackoff(fn, retries = 3, delay = 1000) {
-            try { return await fn(); }
-            catch (err) {
-                if (retries <= 0) throw err;
-                await new Promise(r => setTimeout(r, delay));
-                return retryWithBackoff(fn, retries - 1, delay * 2);
+        function updateSplash(text, isError = false) {
+            const status = document.getElementById("splash-status");
+            const errorBlock = document.getElementById("splash-error");
+            if (isError) {
+                status.style.display = "none";
+                errorBlock.style.display = "block";
+                document.getElementById("error-msg").innerText = text;
+            } else {
+                status.innerText = text;
+                status.style.display = "block";
+                errorBlock.style.display = "none";
             }
         }
 
-        function navigateTo(path) {
-            window.location.href = `${path}?token=${token}`;
-        }
-
         window.onload = async () => {
+            const webAppTimeout = setTimeout(() => {
+                if (!tg.initData) updateSplash("WebApp failed to initialize. Please restart.", true);
+            }, 5000);
+
             tg.ready();
             tg.expand();
             tg.disableVerticalSwipes();
+            clearTimeout(webAppTimeout);
             lucide.createIcons();
 
-            // Ping server before clearing splash
+            const slowTimer = setTimeout(() => {
+                updateSplash("Waking up the sanctuary... Please wait.");
+            }, 3000);
+
             try {
                 await retryWithBackoff(() => fetch('/ping').then(r => { if(!r.ok) throw new Error(); return r.json(); }));
                 setTimeout(() => {
