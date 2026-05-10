@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CRC - Welcome</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-dark: #0a0a0a;
+            --accent: #FFD700;
+            --text-main: #FFFFFF;
+            --text-dim: #A0A0A0;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(255, 215, 0, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.05) 0%, transparent 40%);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .container { max-width: 450px; width: 100%; text-align: center; }
+        h1 { font-family: 'Outfit', sans-serif; font-size: 32px; margin-bottom: 10px; }
+        p { color: var(--text-dim); margin-bottom: 40px; }
+        .role-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 30px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+            display: flex; align-items: center; gap: 20px;
+        }
+        .role-card:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.06); }
+        .icon-box {
+            width: 60px; height: 60px; border-radius: 18px;
+            background: rgba(255, 215, 0, 0.1);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--accent);
+        }
+        .role-info h3 { font-family: 'Outfit', sans-serif; font-size: 20px; margin-bottom: 4px; }
+        .role-info p { margin-bottom: 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, Warrior</h1>
+        <p>Choose your role to begin the journey of renewal.</p>
+        
+        <div class="role-card" onclick="window.location.href='/register/user?token={{ token }}'">
+            <div class="icon-box"><i data-lucide="shield"></i></div>
+            <div class="role-info">
+                <h3>Join as Seeker</h3>
+                <p>Start your recovery journey with accountability and daily check-ins.</p>
+            </div>
+        </div>
+
+        <div class="role-card" onclick="window.location.href='/register/mentor?token={{ token }}'">
+            <div class="icon-box"><i data-lucide="book-open"></i></div>
+            <div class="role-info">
+                <h3>Join as Mentor</h3>
+                <p>Guide others, share your testimony, and lead live sessions.</p>
+            </div>
+        </div>
+    </div>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
