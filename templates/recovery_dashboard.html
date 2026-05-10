@@ -201,13 +201,18 @@
             <div id="mentor-tools-view" style="display: none;">
                 <div class="glass-card">
                     <h3>Mentorship Requests</h3>
-                    <div id="pending-requests-list" style="margin-top: 15px;"></div>
+                    <div id="pending-requests-list" style="margin-top: 15px;">
+                        <p style="color: var(--text-dim); font-size: 13px;">No pending requests.</p>
+                    </div>
                 </div>
                 <div class="glass-card">
                     <h3>Active Mentees</h3>
-                    <div id="mentees-list" style="margin-top: 15px;"></div>
+                    <div id="mentees-list" style="margin-top: 15px;">
+                        <p style="color: var(--text-dim); font-size: 13px;">No active mentees.</p>
+                    </div>
                 </div>
             </div>
+
         </div>
 
         <!-- Community Page -->
@@ -296,8 +301,20 @@
         };
 
         async function init() {
-            user = await api("/api/user/me");
+            try {
+                user = await api("/api/user/me");
+            } catch (e) {
+                console.error("Failed to fetch user", e);
+                return;
+            }
             if (!user) return;
+
+            // Frontend fallback for incomplete profile
+            if (!user.profile_complete && user.role !== 'admin') {
+                window.location.href = "/landing?token=" + token;
+                return;
+            }
+
 
             document.getElementById("user-name").innerText = user.name || "Warrior";
             document.getElementById("user-avatar").innerText = (user.name || "W")[0];
@@ -312,10 +329,12 @@
             if (user.role === 'mentor' || user.role === 'admin') {
                 document.getElementById("mentor-create-session").style.display = "block";
                 document.getElementById("mentor-tools-view").style.display = "block";
+                loadMentorTools();
             } else {
                 document.getElementById("mentorship-status-view").style.display = "block";
                 loadMentorshipTab();
             }
+
 
             loadDashboard();
         }
@@ -435,6 +454,137 @@
             tg.showAlert("Profile updated.");
             init();
         }
+
+        // Mentor Tools & Sessions
+        function showCreateSession() {
+            const title = prompt("Session Title:");
+            const desc = prompt("Short Description:");
+            const time = prompt("Scheduled Time (YYYY-MM-DD HH:MM):", new Date(Date.now() + 3600000).toISOString().slice(0, 16).replace('T', ' '));
+            if (title && time) {
+                mentorCreateSession(title, desc, time);
+            }
+        }
+
+        async function mentorCreateSession(title, description, scheduled_time) {
+            try {
+                const res = await api("/api/sessions", {
+                    method: "POST",
+                    body: JSON.stringify({ title, description, scheduled_time })
+                });
+                if (res.success) {
+                    tg.showAlert("Live session scheduled!");
+                    loadSessions();
+                }
+            } catch (e) {
+                tg.showAlert("Failed to create session. Check date format (YYYY-MM-DD HH:MM).");
+            }
+        }
+
+        async function loadSessions() {
+            const sessions = await api("/api/sessions");
+            const list = document.getElementById("live-sessions-list");
+            if (!sessions.length) {
+                list.innerHTML = `<p style="text-align:center; color:var(--text-dim); margin-top:20px;">No upcoming sessions.</p>`;
+                return;
+            }
+            list.innerHTML = sessions.map(s => `
+                <div class="glass-card">
+                    <h3 style="color:var(--accent);">${s.title}</h3>
+                    <p style="font-size:13px; margin:10px 0;">${s.description || 'No description'}</p>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-dim);">
+                        <span>📅 ${new Date(s.time).toLocaleString()}</span>
+                        <button class="btn-primary" style="width:auto; padding:6px 15px;" onclick="joinSession(${s.id})">Join</button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        async function joinSession(id) {
+            const res = await api(`/api/sessions/${id}/join`);
+            if (res.jitsi_url) tg.openLink(res.jitsi_url);
+        }
+
+        async function loadMentorTools() {
+            // Load Pending Requests
+            const requests = await api("/api/mentorship/requests");
+            const reqList = document.getElementById("pending-requests-list");
+            if (requests.length) {
+                reqList.innerHTML = requests.map(r => `
+                    <div class="glass-card" style="padding:15px; margin-bottom:10px;">
+                        <p><strong>${r.name}</strong> (${r.streak} day streak)</p>
+                        <div style="display:flex; gap:10px; margin-top:10px;">
+                            <button class="btn-primary" style="padding:8px;" onclick="respondRequest(${r.id}, 'accept')">Accept</button>
+                            <button class="btn-outline" style="padding:8px;" onclick="respondRequest(${r.id}, 'reject')">Reject</button>
+                        </div>
+                    </div>
+                `).join("");
+            } else {
+                reqList.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">No pending requests.</p>`;
+            }
+
+            // Load Mentees
+            const mentees = await api("/api/mentees");
+            const mList = document.getElementById("mentees-list");
+            if (mentees.length) {
+                mList.innerHTML = mentees.map(m => `
+                    <div class="glass-card" style="display:flex; align-items:center; gap:12px; padding:15px; cursor:pointer;" onclick="openMentorChat('${m.id}', '${m.name}')">
+                        <div class="avatar">${m.name[0]}</div>
+                        <div style="flex:1;">
+                            <p><strong>${m.name}</strong></p>
+                            <p style="font-size:11px; color:var(--text-dim);">${m.streak} day purity streak</p>
+                        </div>
+                        <i data-lucide="chevron-right" style="color:var(--text-dim); width:16px;"></i>
+                    </div>
+                `).join("");
+                lucide.createIcons();
+            } else {
+                mList.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">No active mentees.</p>`;
+            }
+        }
+
+        async function respondRequest(requestId, action) {
+            const res = await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: requestId, action }) });
+            if (res.success) {
+                tg.showAlert(`Request ${action}ed!`);
+                loadMentorTools();
+            }
+        }
+
+        function openMentorChat(menteeId, menteeName) {
+            currentChatId = menteeId;
+            // Switch view
+            document.getElementById("mentor-tools-view").style.display = "none";
+            const chatView = document.getElementById("active-chat-view");
+            chatView.style.display = "block";
+            document.getElementById("active-mentor-name").innerText = menteeName;
+            document.getElementById("active-mentor-initial").innerText = menteeName[0];
+            
+            // Add a back button
+            if (!document.getElementById("chat-back-btn")) {
+                const backBtn = document.createElement("button");
+                backBtn.id = "chat-back-btn";
+                backBtn.className = "btn-outline";
+                backBtn.style = "width:auto; padding:5px 12px; margin-bottom:10px; font-size:12px;";
+                backBtn.innerHTML = "← Back to Tools";
+                backBtn.onclick = () => {
+                    chatView.style.display = "none";
+                    document.getElementById("mentor-tools-view").style.display = "block";
+                    currentChatId = null;
+                    if (chatInterval) clearInterval(chatInterval);
+                    chatInterval = null;
+                };
+                chatView.prepend(backBtn);
+            }
+            
+            loadMessages(true);
+            if (chatInterval) clearInterval(chatInterval);
+            chatInterval = setInterval(() => loadMessages(false), 5000);
+        }
+        
+        // Initial session load
+        setInterval(loadSessions, 30000);
+        setTimeout(loadSessions, 2000);
     </script>
+
 </body>
 </html>
