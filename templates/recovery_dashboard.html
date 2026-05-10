@@ -254,11 +254,25 @@
 
     <script>
         const tg = window.Telegram.WebApp;
-        const haptic = tg.HapticFeedback;
         const token = "{{ token }}";
         let user = null;
         let currentChatId = null;
         let chatInterval = null;
+
+        // Safe haptic feedback
+        function safeHaptic(type = 'light') {
+            if (window.Telegram?.WebApp?.HapticFeedback?.impactOccurred) {
+                try {
+                    window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+                } catch(e) { console.log('Haptic not supported'); }
+            } else if (window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred) {
+                 try {
+                    if (type === 'success') window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                    else window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+                } catch(e) {}
+            }
+        }
+
 
         // Mobile Fixes & Retry Logic
         async function retryWithBackoff(fn, retries = 3, delay = 1000) {
@@ -351,8 +365,9 @@
             document.getElementById(pageId).classList.add('active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             if (navItem) navItem.classList.add('active');
-            haptic.selectionChanged();
+            safeHaptic('light');
         }
+
 
         async function loadDashboard() {
             const verse = await api("/api/daily-verse");
@@ -363,8 +378,9 @@
         }
 
         async function checkin(status) {
-            haptic.impact('heavy');
+            safeHaptic('heavy');
             const res = await api("/api/checkin", { method: "POST", body: JSON.stringify({ status }) });
+
             if (res.streak !== undefined) {
                 document.getElementById("streak").innerText = res.streak;
                 tg.showAlert(status === 'yes' ? "Glory to God! Another day of purity." : "Stay strong. Tomorrow is a new beginning.");
@@ -379,8 +395,9 @@
             if (res.success) {
                 tg.showAlert("Reflection saved.");
                 input.value = "";
-                haptic.notify('success');
+                safeHaptic('success');
             }
+
         }
 
         async function loadMentorshipTab() {
@@ -425,8 +442,9 @@
 
         async function requestMentor(mentorId) {
             const res = await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: mentorId }) });
-            if (res.success) { loadMentorshipTab(); haptic.notify('success'); }
+            if (res.success) { loadMentorshipTab(); safeHaptic('success'); }
         }
+
 
         async function loadMessages(shouldScroll = false) {
             if (!currentChatId) return;
@@ -456,22 +474,29 @@
         async function sendMessage() {
             const input = document.getElementById("chat-input");
             const content = input.value.trim();
-            if (!content || !currentChatId) return;
+            if (!content || !currentChatId) {
+                console.log("No content or no chat selected");
+                return;
+            }
             
             try {
-                const res = await api("/api/mentor/message", { 
+                const result = await api("/api/mentor/message", { 
                     method: "POST", 
                     body: JSON.stringify({ content, receiver_id: currentChatId }) 
                 });
-                if (res.success) { 
+                if (result.success) { 
                     input.value = ""; 
                     await loadMessages(true); 
-                    haptic.impact('light'); 
+                    safeHaptic('light'); 
+                } else {
+                    tg.showAlert(result.error || "Failed to send message");
                 }
             } catch (err) {
+                console.error("Send message error:", err);
                 tg.showAlert("Error sending message: " + err.message);
             }
         }
+
 
 
         async function updateProfile() {
@@ -642,7 +667,21 @@
         // Initial session load
         setInterval(loadSessions, 30000);
         setTimeout(loadSessions, 2000);
+
+        // Event Listeners for Chat
+        document.addEventListener('DOMContentLoaded', () => {
+            const chatInput = document.getElementById("chat-input");
+            if (chatInput) {
+                chatInput.addEventListener("keypress", (e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                });
+            }
+        });
     </script>
+
 
 </body>
 </html>
