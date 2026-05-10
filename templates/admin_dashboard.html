@@ -76,6 +76,16 @@
     </div>
 
     <div class="glass-card">
+        <h2>Create Live Session</h2>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <input type="text" id="session-title" class="select-input" placeholder="Session Title (e.g. Weekly Prayer)">
+            <textarea id="session-desc" class="select-input" placeholder="Description"></textarea>
+            <input type="datetime-local" id="session-time" class="select-input">
+            <button class="btn" style="width: 100%; padding: 15px;" onclick="createSession()">Schedule Session</button>
+        </div>
+    </div>
+
+    <div class="glass-card">
         <h2>Assign Mentorship</h2>
         <div style="display: flex; flex-direction: column; gap: 10px;">
             <select id="mentee-select" class="select-input"><option>Select Mentee</option></select>
@@ -83,6 +93,15 @@
             <button class="btn" style="width: 100%; padding: 15px;" onclick="assignMentor()">Assign Relationship</button>
         </div>
     </div>
+
+    <div class="glass-card">
+        <h2>Broadcast Message</h2>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <textarea id="broadcast-msg" class="select-input" placeholder="Message to all users..."></textarea>
+            <button class="btn" style="width: 100%; padding: 15px; background: #ff5555; color: #fff;" onclick="broadcast()">Send Broadcast Notification</button>
+        </div>
+    </div>
+
 
     <script>
         const token = "{{ token }}";
@@ -94,6 +113,20 @@
             });
             return res.json();
         }
+
+        async function broadcast() {
+            const msg = document.getElementById("broadcast-msg").value;
+            if (!msg) return alert("Message cannot be empty");
+            if (!confirm("Send this message to ALL users via Telegram?")) return;
+            
+            await apiFetch("/api/admin/broadcast", {
+                method: "POST",
+                body: JSON.stringify({ message: msg })
+            });
+            alert("Broadcast sent!");
+            document.getElementById("broadcast-msg").value = "";
+        }
+
 
         async function loadUsers() {
             const users = await apiFetch("/api/admin/users");
@@ -144,6 +177,22 @@
                 body: JSON.stringify({ user_id: menteeId, mentor_id: mentorId })
             });
             alert("Mentorship assigned!");
+        }
+
+        async function createSession() {
+            const title = document.getElementById("session-title").value;
+            const description = document.getElementById("session-desc").value;
+            const scheduled_time = document.getElementById("session-time").value;
+            if (!title || !scheduled_time) return alert("Title and Time are required");
+
+            await apiFetch("/api/sessions", {
+                method: "POST",
+                body: JSON.stringify({ title, description, scheduled_time })
+            });
+            alert("Session scheduled!");
+            document.getElementById("session-title").value = "";
+            document.getElementById("session-desc").value = "";
+            document.getElementById("session-time").value = "";
         }
 
         loadUsers();
