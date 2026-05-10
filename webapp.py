@@ -366,34 +366,42 @@ def save_reflection():
 @require_auth
 def get_messages():
     receiver_id = request.args.get("receiver_id")
-    if not receiver_id:
-        # Default to first active mentorship if none specified
-        mentor_row = db_fetch_one("SELECT id FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active' LIMIT 1", (request.user_id, request.user_id))
-    else:
-        # Robust fetch for specific mentorship
-        mentor_row = db_fetch_one("""
-            SELECT id FROM recovery_mentorships 
-            WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) 
+    # Find active mentorship between current user and receiver
+    if receiver_id:
+        mentorship = db_fetch_one("""
+            SELECT id FROM recovery_mentorships
+            WHERE ((user_id = %s::text AND mentor_id = %s::text)
+                OR (user_id = %s::text AND mentor_id = %s::text))
             AND status = 'active'
         """, (request.user_id, receiver_id, receiver_id, request.user_id))
+    else:
+        # For regular user without specifying, get their active mentor
+        mentorship = db_fetch_one("""
+            SELECT id FROM recovery_mentorships
+            WHERE (user_id = %s::text OR mentor_id = %s::text)
+            AND status = 'active' LIMIT 1
+        """, (request.user_id, request.user_id))
     
-    if not mentor_row:
-        return jsonify([])
+    if not mentorship:
+        return jsonify([])  # No active mentorship, return empty
     
-    mentorship_id = mentor_row[0]
-    rows = db_fetch_all("SELECT sender_id, content, timestamp FROM recovery_messages WHERE mentorship_id = %s ORDER BY timestamp", (mentorship_id,))
+    mentorship_id = mentorship[0]
+    rows = db_fetch_all("""
+        SELECT m.sender_id, m.content, m.timestamp, u.anonymous_name
+        FROM recovery_messages m
+        JOIN users u ON m.sender_id = u.user_id
+        WHERE m.mentorship_id = %s
+        ORDER BY m.timestamp ASC
+    """, (mentorship_id,))
     
-    user_names = {}
-    all_sender_ids = list(set([str(r[0]) for r in rows]))
-    if all_sender_ids:
-        if len(all_sender_ids) == 1:
-            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id = %s::text", (all_sender_ids[0],))
-        else:
-            name_rows = db_fetch_all("SELECT user_id, anonymous_name FROM users WHERE user_id IN %s", (tuple(all_sender_ids),))
-        user_names = {r[0]: r[1] for r in name_rows}
-
-    messages = [{"sender_id": r[0], "sender_name": user_names.get(str(r[0]), "Unknown"), "content": r[1], "timestamp": str(r[2])} for r in rows]
+    messages = [{
+        "sender_id": r[0],
+        "content": r[1],
+        "timestamp": str(r[2]),
+        "sender_name": r[3]
+    } for r in rows]
     return jsonify(messages)
+
 
 
 
@@ -520,9 +528,10 @@ def active_mentorship():
 @app.route("/api/sessions", methods=["GET"])
 @require_auth
 def get_sessions():
-    rows = db_fetch_all("SELECT id, title, description, scheduled_time, jitsi_room FROM recovery_live_sessions WHERE scheduled_time > NOW() ORDER BY scheduled_time")
-    sessions = [{"id": r[0], "title": r[1], "description": r[2], "time": str(r[3]), "room": r[4]} for r in rows]
+    rows = db_fetch_all("SELECT id, title, description, scheduled_time, jitsi_room, host_id FROM recovery_live_sessions WHERE scheduled_time > NOW() ORDER BY scheduled_time")
+    sessions = [{"id": r[0], "title": r[1], "description": r[2], "time": str(r[3]), "room": r[4], "host_id": r[5]} for r in rows]
     return jsonify(sessions)
+
 
 @app.route("/api/sessions", methods=["POST"])
 @require_auth
@@ -543,10 +552,15 @@ def create_session():
 @require_auth
 def delete_session(session_id):
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-    if user[0] not in ('mentor', 'admin'):
-        return jsonify({"error": "Unauthorized"}), 403
-    db_execute("DELETE FROM recovery_live_sessions WHERE id = %s", (session_id,))
-    return jsonify({"success": True})
+    session = db_fetch_one("SELECT host_id FROM recovery_live_sessions WHERE id = %s", (session_id,))
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    # Allow if user is admin OR if user is the host (mentor)
+    if user[0] == 'admin' or str(session[0]) == request.user_id:
+        db_execute("DELETE FROM recovery_live_sessions WHERE id = %s", (session_id,))
+        return jsonify({"success": True})
+    return jsonify({"error": "Unauthorized"}), 403
+
 
 @app.route("/api/sessions/<int:session_id>/join", methods=["GET"])
 @require_auth
