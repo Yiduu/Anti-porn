@@ -33,8 +33,9 @@ def add_header(response):
 
 @app.route("/ping", methods=['GET', 'HEAD'])
 def ping():
-    """Simple health check for UptimeRobot (supports both HEAD and GET)."""
-    return "OK", 200
+    """Simple health check for UptimeRobot and Frontend."""
+    return jsonify({"status": "ok", "message": "OK"}), 200
+
 
 
 
@@ -205,17 +206,23 @@ def recovery():
     if not token:
         return "Missing token. Please open via Telegram bot.", 400
     
-    # Check if profile is complete
+    # Robust check for profile completion
     try:
         data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
         u_id = str(data["user_id"])
         row = db_fetch_one("SELECT profile_complete FROM users WHERE user_id = %s::text", (u_id,))
-        if row and not row[0]:
-            return redirect(f"/landing?token={token}")
-    except:
+        
+        # If user doesn't exist or profile is not complete, send to landing
+        if not row or not row[0]:
+            # Exception: Admin is always complete
+            if u_id != str(ADMIN_ID):
+                return redirect(f"/landing?token={token}")
+    except Exception as e:
+        logger.error(f"Recovery route error: {e}")
         pass
         
     return render_template("recovery_dashboard.html", token=token)
+
 
 
 @app.route("/admin")
@@ -463,6 +470,21 @@ def get_mentorship_requests():
     requests = [{"id": r[0], "user_id": r[1], "name": r[2], "streak": r[3]} for r in rows]
     return jsonify(requests)
 
+@app.route("/api/mentorship/status", methods=["GET"])
+@require_auth
+def mentorship_status():
+    # As a user, get my mentor or pending request
+    row = db_fetch_one("""
+        SELECT m.id, u.user_id, u.anonymous_name, m.status 
+        FROM recovery_mentorships m 
+        JOIN users u ON m.mentor_id = u.user_id 
+        WHERE m.user_id = %s::text AND m.status IN ('pending', 'active')
+        ORDER BY m.id DESC LIMIT 1
+    """, (request.user_id,))
+    if not row:
+        return jsonify(None)
+    return jsonify({"id": row[0], "mentor_id": row[1], "name": row[2], "status": row[3]})
+
 @app.route("/api/mentorship/respond", methods=["POST"])
 @require_auth
 def respond_mentorship():
@@ -472,15 +494,14 @@ def respond_mentorship():
     
     status = 'active' if action == 'accept' else 'rejected'
     
-    # Verify ownership
-    row = db_fetch_one("SELECT user_id FROM recovery_mentorships WHERE id = %s AND mentor_id = %s::text", (request_id, request_id)) # Wait, mentor_id should match
-    # Re-fetch correctly
+    # Verify ownership: mentorship request must belong to this mentor
     row = db_fetch_one("SELECT user_id, mentor_id FROM recovery_mentorships WHERE id = %s", (request_id,))
     if not row or str(row[1]) != str(request.user_id):
         return jsonify({"error": "Unauthorized"}), 403
         
     mentee_id = row[0]
     db_execute("UPDATE recovery_mentorships SET status = %s WHERE id = %s", (status, request_id))
+
     
     # Notify user
     mentor_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
@@ -492,16 +513,8 @@ def respond_mentorship():
 @app.route("/api/user/active-mentorship", methods=["GET"])
 @require_auth
 def active_mentorship():
-    # As a user, get my mentor
-    row = db_fetch_one("""
-        SELECT m.id, u.user_id, u.anonymous_name, m.status 
-        FROM recovery_mentorships m 
-        JOIN users u ON m.mentor_id = u.user_id 
-        WHERE m.user_id = %s::text AND m.status IN ('pending', 'active')
-    """, (request.user_id,))
-    if not row:
-        return jsonify(None)
-    return jsonify({"id": row[0], "mentor_id": row[1], "name": row[2], "status": row[3]})
+    return mentorship_status()
+
 
 
 @app.route("/api/sessions", methods=["GET"])
