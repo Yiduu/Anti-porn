@@ -132,7 +132,12 @@
 <body>
     <div id="splash-screen">
         <div class="loader-ring"></div>
-        <div class="splash-text">Sanctuary Loading</div>
+        <div class="splash-text" id="splash-status">Sanctuary Loading</div>
+        <div id="splash-error" style="display: none; margin-top: 20px; text-align: center; padding: 0 40px;">
+            <p style="color: #ff5555; margin-bottom: 20px; font-size: 14px; line-height: 1.4;" id="error-msg">Connection lost</p>
+            <button class="btn-primary" onclick="location.reload()" style="width: auto; padding: 12px 40px;">RETRY CONNECTION</button>
+            <p style="margin-top: 15px; font-size: 11px; color: var(--text-dim);">If the problem persists, please check your internet or restart the bot.</p>
+        </div>
     </div>
 
     <div class="app-container">
@@ -256,10 +261,27 @@
 
     <script>
         const tg = window.Telegram.WebApp;
-        const token = "{{ token }}";
+        const token = new URLSearchParams(window.location.search).get("token");
         let user = null;
         let currentChatId = null;
         let chatInterval = null;
+
+        // --- Robust Loading Utilities ---
+
+        function updateSplash(text, isError = false) {
+            const status = document.getElementById("splash-status");
+            const errorBlock = document.getElementById("splash-error");
+            if (isError) {
+                status.style.display = "none";
+                errorBlock.style.display = "block";
+                document.getElementById("error-msg").innerText = text;
+                safeHaptic('heavy');
+            } else {
+                status.innerText = text;
+                status.style.display = "block";
+                errorBlock.style.display = "none";
+            }
+        }
 
         function safeHaptic(type = 'light') {
             if (window.Telegram?.WebApp?.HapticFeedback?.impactOccurred) {
@@ -267,49 +289,111 @@
             }
         }
 
-        async function retryWithBackoff(fn, retries = 3, delay = 1000) {
-            try { return await fn(); }
-            catch (err) {
-                if (retries <= 0) throw err;
-                await new Promise(r => setTimeout(r, delay));
-                return retryWithBackoff(fn, retries - 1, delay * 2);
+        async function fetchWithTimeout(resource, options = {}) {
+            const { timeout = 15000 } = options;
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            const response = await fetch(resource, { ...options, signal: controller.signal });
+            clearTimeout(id);
+            return response;
+        }
+
+        async function retryFetch(path, options = {}, retries = 3) {
+            const cacheBuster = `_=${Date.now()}`;
+            const url = path.includes('?') ? `${path}&${cacheBuster}` : `${path}?${cacheBuster}`;
+            
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const res = await fetchWithTimeout(url, {
+                        ...options,
+                        headers: { 
+                            "Authorization": token, 
+                            "Content-Type": "application/json",
+                            ...(options.headers || {})
+                        }
+                    });
+                    if (res.status === 401) {
+                        window.location.href = "/landing?token=" + token;
+                        return;
+                    }
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return await res.json();
+                } catch (err) {
+                    console.warn(`Retry ${i+1}/${retries} for ${path} failed:`, err);
+                    if (i === retries - 1) throw err;
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i))); // Exponential backoff
+                }
             }
         }
 
-        async function api(path, options = {}) {
-            const res = await fetch(path, {
-                headers: { "Authorization": token, "Content-Type": "application/json" },
-                ...options
-            });
-            if (!res.ok) throw new Error("API failed");
-            return res.json();
-        }
+        // Global API wrapper
+        const api = (path, options) => retryFetch(path, options, 3);
 
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
         }
 
+        // --- App Initialization ---
+
         window.onload = async () => {
-            tg.ready(); tg.expand(); tg.disableVerticalSwipes(); lucide.createIcons();
+            // 1. Initialize WebApp
+            const webAppTimeout = setTimeout(() => {
+                if (!tg.initData) updateSplash("Telegram WebApp failed to initialize. Please restart.", true);
+            }, 5000);
+
+            tg.ready();
+            tg.expand();
+            try { tg.disableVerticalSwipes(); } catch(e) {}
+            clearTimeout(webAppTimeout);
+            lucide.createIcons();
+
+            // 2. Slow Connection Handlers
+            const slowTimer = setTimeout(() => {
+                updateSplash("Still loading... This may take a moment on slow connections.");
+            }, 3500);
+
+            const failTimer = setTimeout(() => {
+                updateSplash("Connection taking longer than expected. Please check your signal.", true);
+            }, 12000);
+
             try {
-                await retryWithBackoff(() => fetch('/ping').then(r => r.json()));
-                await init();
+                // 3. Ping Server (Wake up Render instance)
+                updateSplash("Connecting to sanctuary...");
+                await retryFetch("/ping", { timeout: 10000 }, 5); // More retries for cold start
+
+                // 4. Authenticate & Load Profile
+                updateSplash("Authenticating...");
+                user = await api("/api/user/me");
+                if (!user) throw new Error("Authentication failed");
+
+                // Check profile completion
+                if (!user.profile_complete && user.role !== 'admin') {
+                    window.location.href = "/landing?token=" + token;
+                    return;
+                }
+
+                // 5. Finalize UI
+                updateSplash("Preparing your dashboard...");
+                clearTimeout(slowTimer);
+                clearTimeout(failTimer);
+                
+                await finalizeInit();
+
+                // Smooth Fade Out
                 setTimeout(() => {
-                    document.getElementById("splash-screen").style.opacity = "0";
-                    setTimeout(() => document.getElementById("splash-screen").style.display = "none", 500);
-                }, 800);
+                    const splash = document.getElementById("splash-screen");
+                    splash.style.opacity = "0";
+                    setTimeout(() => splash.style.display = "none", 500);
+                }, 600);
+
             } catch (e) {
-                document.querySelector(".splash-text").innerHTML = "CONNECTION ERROR<br><button onclick='location.reload()'>RETRY</button>";
+                console.error("Initialization failed:", e);
+                updateSplash("Unable to reach the server. Please try again.", true);
             }
         };
 
-        async function init() {
-            try { user = await api("/api/user/me"); } catch (e) { return; }
-            if (!user) return;
-            if (!user.profile_complete && user.role !== 'admin') {
-                window.location.href = "/landing?token=" + token; return;
-            }
+        async function finalizeInit() {
             document.getElementById("user-name").innerText = user.name || "Warrior";
             document.getElementById("user-avatar").innerText = (user.name || "W")[0];
             document.getElementById("profile-display-name").innerText = user.name || "Warrior";
@@ -318,10 +402,17 @@
             document.getElementById("role-badge").innerText = user.role.toUpperCase();
             document.getElementById("profile-name").value = user.name || "";
             document.getElementById("profile-bio").value = user.bio || "";
+            
             if (user.role === 'admin') document.getElementById("admin-link").style.display = "block";
             if (user.role === 'mentor' || user.role === 'admin') document.getElementById("mentor-create-session").style.display = "block";
-            loadChatList(); loadDashboard(); loadSessions();
+            
+            // Background loads
+            loadChatList(); 
+            loadDashboard(); 
+            loadSessions();
         }
+
+        // --- Feature Logic (Unchanged but using new api utility) ---
 
         function showPage(pageId, navItem) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -332,32 +423,37 @@
         }
 
         async function loadDashboard() {
-            const verse = await api("/api/daily-verse");
-            if (verse) {
-                document.getElementById("verse-text").innerText = `"${verse.text}"`;
-                document.getElementById("verse-ref").innerText = verse.reference;
-            }
+            try {
+                const verse = await api("/api/daily-verse");
+                if (verse) {
+                    document.getElementById("verse-text").innerText = `"${verse.text}"`;
+                    document.getElementById("verse-ref").innerText = verse.reference;
+                }
+            } catch(e) {}
         }
 
         async function checkin(status) {
-            const res = await api("/api/checkin", { method: "POST", body: JSON.stringify({ status }) });
-            if (res.streak !== undefined) {
-                document.getElementById("streak").innerText = res.streak;
-                tg.showAlert(status === 'yes' ? "Praise God! Streak maintained." : "Tomorrow is a new day. Stay strong.");
-                safeHaptic('heavy');
-            }
+            try {
+                const res = await api("/api/checkin", { method: "POST", body: JSON.stringify({ status }) });
+                if (res.streak !== undefined) {
+                    document.getElementById("streak").innerText = res.streak;
+                    tg.showAlert(status === 'yes' ? "Praise God! Streak maintained." : "Tomorrow is a new day. Stay strong.");
+                    safeHaptic('heavy');
+                }
+            } catch(e) { tg.showAlert("Check-in failed. Please try again."); }
         }
 
         async function saveReflection() {
             const input = document.getElementById("reflection-input");
             if (!input.value.trim()) return;
-            const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ reflection_text: input.value }) });
-            if (res.success) { tg.showAlert("Reflection saved."); input.value = ""; safeHaptic('success'); }
+            try {
+                const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ reflection_text: input.value }) });
+                if (res.success) { tg.showAlert("Reflection saved."); input.value = ""; safeHaptic('success'); }
+            } catch(e) {}
         }
 
         async function loadChatList() {
             const listDiv = document.getElementById("mentee-list");
-            listDiv.innerHTML = '<div class="loader-ring" style="width:30px; height:30px; margin:20px auto;"></div>';
             try {
                 if (user.role === 'mentor' || user.role === 'admin') {
                     const mentees = await api("/api/mentees");
@@ -403,17 +499,19 @@
         }
 
         async function loadAvailableMentors() {
-            const mentors = await api("/api/mentors");
-            document.getElementById("available-mentors-list").innerHTML = mentors.map(m => `
-                <div class="glass-card" style="margin-top:10px;">
-                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;"><div class="avatar">${m.name[0]}</div><b>${escapeHtml(m.name)}</b></div>
-                    <p style="font-size:13px; color:var(--text-dim); margin-bottom:15px;">${escapeHtml(m.bio || "No bio")}</p>
-                    <button class="btn-primary" onclick="requestMentor('${m.id}')">Request Mentorship</button>
-                </div>`).join("");
+            try {
+                const mentors = await api("/api/mentors");
+                document.getElementById("available-mentors-list").innerHTML = mentors.map(m => `
+                    <div class="glass-card" style="margin-top:10px;">
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;"><div class="avatar">${m.name[0]}</div><b>${escapeHtml(m.name)}</b></div>
+                        <p style="font-size:13px; color:var(--text-dim); margin-bottom:15px;">${escapeHtml(m.bio || "No bio")}</p>
+                        <button class="btn-primary" onclick="requestMentor('${m.id}')">Request Mentorship</button>
+                    </div>`).join("");
+            } catch(e) {}
         }
 
-        async function requestMentor(id) { await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: id }) }); loadChatList(); safeHaptic('success'); }
-        async function respondMentorship(id, action) { await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: id, action }) }); loadChatList(); safeHaptic('success'); }
+        async function requestMentor(id) { try { await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: id }) }); loadChatList(); safeHaptic('success'); } catch(e) {} }
+        async function respondMentorship(id, action) { try { await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: id, action }) }); loadChatList(); safeHaptic('success'); } catch(e) {} }
 
         window.openChat = async (id, name) => {
             currentChatId = id;
@@ -436,22 +534,26 @@
 
         async function loadMessages(scroll) {
             if (!currentChatId) return;
-            const msgs = await api(`/api/mentor/messages?receiver_id=${currentChatId}`);
-            const container = document.getElementById("chat-messages");
-            if (!msgs.length) { container.innerHTML = "<p style='text-align:center; padding:20px; color:var(--text-dim);'>No messages yet.</p>"; return; }
-            container.innerHTML = msgs.map(m => `
-                <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
-                    <div class="msg-text">${escapeHtml(m.content)}</div>
-                    <div class="msg-info">${escapeHtml(m.sender_name)} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                </div>`).join("");
-            if (scroll) container.scrollTop = container.scrollHeight;
+            try {
+                const msgs = await api(`/api/mentor/messages?receiver_id=${currentChatId}`);
+                const container = document.getElementById("chat-messages");
+                if (!msgs.length) { container.innerHTML = "<p style='text-align:center; padding:20px; color:var(--text-dim);'>No messages yet.</p>"; return; }
+                container.innerHTML = msgs.map(m => `
+                    <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
+                        <div class="msg-text">${escapeHtml(m.content)}</div>
+                        <div class="msg-info">${escapeHtml(m.sender_name)} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                    </div>`).join("");
+                if (scroll) container.scrollTop = container.scrollHeight;
+            } catch(e) {}
         }
 
         async function sendMessage() {
             const input = document.getElementById("chat-input");
             if (!input.value.trim() || !currentChatId) return;
-            const res = await api("/api/mentor/message", { method: "POST", body: JSON.stringify({ content: input.value, receiver_id: currentChatId }) });
-            if (res.success) { input.value = ""; loadMessages(true); safeHaptic('light'); }
+            try {
+                const res = await api("/api/mentor/message", { method: "POST", body: JSON.stringify({ content: input.value, receiver_id: currentChatId }) });
+                if (res.success) { input.value = ""; loadMessages(true); safeHaptic('light'); }
+            } catch(e) {}
         }
 
         window.startPrivateVideoCall = () => {
@@ -460,32 +562,36 @@
         };
 
         async function loadSessions() {
-            const sessions = await api("/api/sessions");
-            const list = document.getElementById("live-sessions-list");
-            if (!sessions.length) { list.innerHTML = "<p style='text-align:center; color:var(--text-dim); padding:40px;'>No sessions.</p>"; return; }
-            list.innerHTML = sessions.map(s => `
-                <div class="glass-card">
-                    <div style="display:flex; justify-content:space-between;">
-                        <div><h4 style="color:var(--accent);">${escapeHtml(s.title)}</h4><p style="font-size:12px; color:var(--text-dim);">📅 ${new Date(s.time).toLocaleString()}</p></div>
-                        ${(user.role === 'admin' || s.host_id === user.user_id) ? `<button class="btn-outline" style="width:auto; padding:5px;" onclick="deleteSession(${s.id})"><i data-lucide="trash-2" style="width:16px; color:#ff5555;"></i></button>` : ''}
-                    </div>
-                    <p style="font-size:13px; margin:10px 0;">${escapeHtml(s.description || 'Live support session.')}</p>
-                    <button class="btn-primary" onclick="joinSession(${s.id})">Join Session</button>
-                </div>`).join("");
-            lucide.createIcons();
+            try {
+                const sessions = await api("/api/sessions");
+                const list = document.getElementById("live-sessions-list");
+                if (!sessions.length) { list.innerHTML = "<p style='text-align:center; color:var(--text-dim); padding:40px;'>No sessions.</p>"; return; }
+                list.innerHTML = sessions.map(s => `
+                    <div class="glass-card">
+                        <div style="display:flex; justify-content:space-between;">
+                            <div><h4 style="color:var(--accent);">${escapeHtml(s.title)}</h4><p style="font-size:12px; color:var(--text-dim);">📅 ${new Date(s.time).toLocaleString()}</p></div>
+                            ${(user.role === 'admin' || s.host_id === user.user_id) ? `<button class="btn-outline" style="width:auto; padding:5px;" onclick="deleteSession(${s.id})"><i data-lucide="trash-2" style="width:16px; color:#ff5555;"></i></button>` : ''}
+                        </div>
+                        <p style="font-size:13px; margin:10px 0;">${escapeHtml(s.description || 'Live support session.')}</p>
+                        <button class="btn-primary" onclick="joinSession(${s.id})">Join Session</button>
+                    </div>`).join("");
+                lucide.createIcons();
+            } catch(e) {}
         }
 
-        async function deleteSession(id) { if (confirm("Delete session?")) { await api(`/api/sessions/${id}`, { method: "DELETE" }); loadSessions(); safeHaptic('heavy'); } }
-        async function joinSession(id) { const res = await api(`/api/sessions/${id}/join`); if (res.jitsi_url) tg.openLink(res.jitsi_url); }
+        async function deleteSession(id) { if (confirm("Delete session?")) { try { await api(`/api/sessions/${id}`, { method: "DELETE" }); loadSessions(); safeHaptic('heavy'); } catch(e) {} } }
+        async function joinSession(id) { try { const res = await api(`/api/sessions/${id}/join`); if (res.jitsi_url) tg.openLink(res.jitsi_url); } catch(e) {} }
         function showCreateSession() {
             const title = prompt("Title:"), desc = prompt("Desc:"), time = prompt("Time (YYYY-MM-DD HH:MM):");
-            if (title && time) api("/api/sessions", { method: "POST", body: JSON.stringify({ title, description: desc, scheduled_time: time }) }).then(() => { loadSessions(); safeHaptic('success'); });
+            if (title && time) api("/api/sessions", { method: "POST", body: JSON.stringify({ title, description: desc, scheduled_time: time }) }).then(() => { loadSessions(); safeHaptic('success'); }).catch(e => tg.showAlert("Failed to create session."));
         }
 
         async function updateProfile() {
             const name = document.getElementById("profile-name").value, bio = document.getElementById("profile-bio").value;
-            const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ anonymous_name: name, bio }) });
-            if (res.success) { tg.showAlert("Profile updated!"); init(); }
+            try {
+                const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ anonymous_name: name, bio }) });
+                if (res.success) { tg.showAlert("Profile updated!"); user.name = name; user.bio = bio; finalizeInit(); }
+            } catch(e) { tg.showAlert("Failed to update profile."); }
         }
 
         setInterval(loadSessions, 60000);
