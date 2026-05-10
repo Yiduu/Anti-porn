@@ -27,8 +27,13 @@ def add_header(response):
     # Prevent caching of HTML pages for fresh WebApp loads
     if response.mimetype == 'text/html':
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, post-check=0, pre-check=0, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+    elif response.mimetype == 'application/json':
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    
+    # Ensure CORS for Telegram WebApp
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     return response
 
 @app.route("/ping", methods=['GET', 'HEAD'])
