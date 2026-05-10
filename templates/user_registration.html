@@ -2,66 +2,81 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CRC - Seeker Setup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover, height=device-height">
+    <title>Seeker Setup - CRC</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #0a0a0a;
+            --bg-gradient: radial-gradient(circle at 10% 20%, #1a1a2e, #0a0a0a);
             --accent: #FFD700;
+            --gold-gradient: linear-gradient(135deg, #FFD700 0%, #B8860B 100%);
             --text-main: #FFFFFF;
             --text-dim: #A0A0A0;
-            --glass-bg: rgba(30, 30, 47, 0.95);
-            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body {
-            background-color: var(--bg-dark);
+            background: var(--bg-gradient);
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
-            padding: 20px;
+            padding: 24px;
+            min-height: 100vh;
         }
-        .container { max-width: 450px; margin: 0 auto; }
-        h1 { font-family: 'Outfit', sans-serif; margin-bottom: 20px; text-align: center; }
+        .container { max-width: 450px; margin: 0 auto; padding-top: 20px; }
+        h1 { font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 700; margin-bottom: 8px; text-align: center; }
+        p.subtitle { color: var(--text-dim); text-align: center; margin-bottom: 32px; font-size: 14px; }
+        
         .form-card {
             background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--glass-border);
-            border-radius: 24px;
-            padding: 25px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            border-radius: 28px;
+            padding: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.4);
         }
-        label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 8px; margin-top: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+        label { display: block; font-family: 'Outfit', sans-serif; font-size: 13px; color: var(--accent); margin-bottom: 8px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        label:first-child { margin-top: 0; }
+        
         select, input {
             width: 100%;
-            background: #1e1e2f;
-            border: 1px solid #444;
-            border-radius: 12px;
-            padding: 14px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 16px;
             color: #fff;
             font-size: 16px;
             outline: none;
-            transition: border-color 0.3s;
+            transition: all 0.3s;
+            font-family: 'Inter', sans-serif;
         }
-        select:focus, input:focus { border-color: var(--accent); }
-        option { background: #2a2a3a; color: #fff; }
+        select:focus, input:focus { border-color: var(--accent); background: rgba(0,0,0,0.5); }
+        option { background: #1a1a2e; color: #fff; }
+
         .btn-primary {
-            background: var(--accent);
+            background: var(--gold-gradient);
             color: #000;
             border: none;
-            padding: 16px;
-            border-radius: 16px;
+            padding: 18px;
+            border-radius: 20px;
             width: 100%;
             font-weight: 700;
-            font-size: 16px;
-            margin-top: 30px;
+            font-size: 17px;
+            margin-top: 40px;
             cursor: pointer;
+            box-shadow: 0 4px 15px rgba(184, 134, 11, 0.3);
+            transition: transform 0.2s;
         }
+        .btn-primary:active { transform: scale(0.98); }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Seeker Profile</h1>
+        <h1>Seeker Setup</h1>
+        <p class="subtitle">Personalize your recovery sanctuary.</p>
+        
         <div class="form-card">
             <label>Sex</label>
             <select id="sex">
@@ -69,28 +84,35 @@
                 <option value="female">Female</option>
             </select>
 
-            <label>Age</label>
-            <input type="number" id="age" placeholder="25">
+            <label>Current Age</label>
+            <input type="number" id="age" placeholder="e.g. 25">
 
             <label>Educational Level</label>
-            <input type="text" id="edu" placeholder="Graduate / Student">
+            <input type="text" id="edu" placeholder="e.g. University Graduate">
 
             <label>When did the addiction start?</label>
             <select id="addiction">
-                <option value="<18">Before 18</option>
+                <option value="<18">Under 18</option>
                 <option value="18-22">18 - 22 years</option>
                 <option value="23-30">23 - 30 years</option>
-                <option value=">30">After 30</option>
+                <option value=">30">Over 30</option>
             </select>
 
             <label>Longest porn-free streak (days)</label>
             <input type="number" id="streak" placeholder="0">
 
-            <button class="btn-primary" onclick="submit()">Complete Registration</button>
+            <button class="btn-primary" id="submit-btn" onclick="submit()">Begin My Journey</button>
         </div>
     </div>
+
     <script>
+        const tg = window.Telegram.WebApp;
         const token = "{{ token }}";
+
+        tg.ready();
+        tg.expand();
+        tg.disableVerticalSwipes();
+
         async function submit() {
             const data = {
                 sex: document.getElementById("sex").value,
@@ -99,13 +121,33 @@
                 addiction_year: document.getElementById("addiction").value,
                 longest_free_streak: document.getElementById("streak").value
             };
-            const res = await fetch("/api/register/user", {
-                method: "POST",
-                headers: { "Authorization": token, "Content-Type": "application/json" },
-                body: JSON.stringify(data)
-            });
-            if (res.ok) window.location.href = "/recovery?token=" + token;
-            else alert("Error saving registration.");
+
+            if (!data.age || !data.educational_level) {
+                tg.showAlert("Please complete all fields to continue.");
+                return;
+            }
+
+            const btn = document.getElementById("submit-btn");
+            btn.disabled = true;
+            btn.innerText = "Setting up sanctuary...";
+
+            try {
+                const res = await fetch("/api/register/user", {
+                    method: "POST",
+                    headers: { "Authorization": token, "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                    window.location.href = "/recovery?token=" + token;
+                } else {
+                    throw new Error();
+                }
+            } catch (e) {
+                tg.showAlert("Setup failed. Please check your connection.");
+                btn.disabled = false;
+                btn.innerText = "Begin My Journey";
+            }
         }
     </script>
 </body>
