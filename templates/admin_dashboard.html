@@ -90,11 +90,22 @@
             
             <div style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 24px;">
                 <h3 style="margin-bottom: 15px;">Manual Mentorship</h3>
+                <label style="font-size: 11px; color: var(--text-dim);">Select Seeker (Mentee)</label>
                 <select id="mentee-select"></select>
+                <label style="font-size: 11px; color: var(--text-dim);">Select Mentor</label>
                 <select id="mentor-select"></select>
                 <button class="btn" style="width: 100%;" onclick="assignMentor()">Assign Relationship</button>
             </div>
+            
+            <div style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 24px;">
+                <h3 style="margin-bottom: 15px;">Schedule Global Live Session</h3>
+                <input type="text" id="session-title" placeholder="Session Title">
+                <textarea id="session-desc" placeholder="Session Description"></textarea>
+                <input type="text" id="session-time" placeholder="Time (YYYY-MM-DD HH:MM)">
+                <button class="btn" style="width: 100%; background: var(--accent); color: #000;" onclick="createSession()">Schedule Session</button>
+            </div>
         </div>
+
     </div>
 
     <script>
@@ -184,8 +195,47 @@
             if (msg) {
                 await api("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ message: msg }) });
                 alert("Broadcast sent!");
+                document.getElementById("broadcast-msg").value = "";
             }
         }
+
+        async function assignMentor() {
+            const menteeId = document.getElementById("mentee-select").value;
+            const mentorId = document.getElementById("mentor-select").value;
+            if (!menteeId || !mentorId || menteeId === "Select Mentee" || mentorId === "Select Mentor") {
+                alert("Please select both a seeker and a mentor.");
+                return;
+            }
+            const res = await api("/api/admin/assign-mentor", { 
+                method: "POST", 
+                body: JSON.stringify({ user_id: menteeId, mentor_id: mentorId }) 
+            });
+            if (res.success) {
+                alert("Mentorship assigned successfully!");
+                loadData();
+            }
+        }
+
+        async function createSession() {
+            const title = document.getElementById("session-title").value;
+            const description = document.getElementById("session-desc").value;
+            const scheduled_time = document.getElementById("session-time").value;
+            if (!title || !scheduled_time) {
+                alert("Title and Time are required.");
+                return;
+            }
+            const res = await api("/api/sessions", {
+                method: "POST",
+                body: JSON.stringify({ title, description, scheduled_time })
+            });
+            if (res.success) {
+                alert("Live session created!");
+                document.getElementById("session-title").value = "";
+                document.getElementById("session-desc").value = "";
+                document.getElementById("session-time").value = "";
+            }
+        }
+
 
         loadData();
         lucide.createIcons();
