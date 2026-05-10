@@ -366,34 +366,29 @@ def save_reflection():
 @require_auth
 def get_messages():
     receiver_id = request.args.get("receiver_id")
-    current_user_id = request.user_id
-    
-    if not receiver_id:
-        # No receiver specified: try to find the active mentorship for current user
+    current_user = request.user_id
+
+    # Find active mentorship between current_user and receiver (if provided)
+    if receiver_id:
+        mentorship = db_fetch_one("""
+            SELECT id FROM recovery_mentorships
+            WHERE status = 'active'
+            AND ( (user_id = %s::text AND mentor_id = %s::text)
+               OR (user_id = %s::text AND mentor_id = %s::text) )
+        """, (current_user, receiver_id, receiver_id, current_user))
+    else:
+        # for cases where no receiver_id (e.g., mentee fetching their only mentor)
         mentorship = db_fetch_one("""
             SELECT id FROM recovery_mentorships
             WHERE status = 'active'
             AND (user_id = %s::text OR mentor_id = %s::text)
             LIMIT 1
-        """, (current_user_id, current_user_id))
-    else:
-        # Find mentorship between current_user and receiver (either direction)
-        mentorship = db_fetch_one("""
-            SELECT id FROM recovery_mentorships
-            WHERE status = 'active'
-            AND (
-                (user_id = %s::text AND mentor_id = %s::text)
-                OR
-                (user_id = %s::text AND mentor_id = %s::text)
-            )
-        """, (current_user_id, receiver_id, receiver_id, current_user_id))
-    
+        """, (current_user, current_user))
+
     if not mentorship:
-        return jsonify([])  # No active mentorship found
-    
+        return jsonify([])
+
     mentorship_id = mentorship[0]
-    
-    # Fetch messages with sender names
     rows = db_fetch_all("""
         SELECT m.sender_id, m.content, m.timestamp, u.anonymous_name
         FROM recovery_messages m
@@ -401,15 +396,15 @@ def get_messages():
         WHERE m.mentorship_id = %s
         ORDER BY m.timestamp ASC
     """, (mentorship_id,))
-    
+
     messages = [{
         "sender_id": r[0],
         "content": r[1],
         "timestamp": str(r[2]),
         "sender_name": r[3]
     } for r in rows]
-    
     return jsonify(messages)
+
 
 
 
@@ -421,37 +416,36 @@ def get_messages():
 @require_auth
 def send_message():
     data = request.json
-    receiver_id = data.get("receiver_id")
+    receiver = data.get("receiver_id")
     content = data.get("content")
-    
-    if not content or not receiver_id:
+    if not content or not receiver:
         return jsonify({"error": "Missing content or receiver"}), 400
-    
-    # Find active mentorship
+
     mentorship = db_fetch_one("""
         SELECT id FROM recovery_mentorships
         WHERE status = 'active'
-        AND ((user_id = %s::text AND mentor_id = %s::text)
-          OR (user_id = %s::text AND mentor_id = %s::text))
-    """, (request.user_id, receiver_id, receiver_id, request.user_id))
-    
+        AND ( (user_id = %s::text AND mentor_id = %s::text)
+           OR (user_id = %s::text AND mentor_id = %s::text) )
+    """, (request.user_id, receiver, receiver, request.user_id))
+
     if not mentorship:
-        return jsonify({"error": "No active mentorship found"}), 400
-    
+        return jsonify({"error": "No active mentorship"}), 400
+
     mentorship_id = mentorship[0]
     db_execute("""
         INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content)
         VALUES (%s, %s::text, %s::text, %s)
-    """, (mentorship_id, request.user_id, receiver_id, content))
-    
-    # Notify receiver (if they have notifications on)
-    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::text", (receiver_id,))
-    if user_row and user_row[1]:
+    """, (mentorship_id, request.user_id, receiver, content))
+
+    # Optional: send Telegram notification to receiver
+    user_row = db_fetch_one("SELECT recovery_notifications, anonymous_name FROM users WHERE user_id = %s::text", (receiver,))
+    if user_row and user_row[0]:
         sender_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
         sender_name = sender_row[0] if sender_row else "Someone"
-        send_telegram_notification(receiver_id, f"📩 New message from {sender_name} in Recovery App.")
-    
+        send_telegram_notification(receiver, f"📩 New message from {sender_name} in Recovery App.")
+
     return jsonify({"success": True})
+
 
 
 @app.route("/api/mentors", methods=["GET"])
@@ -510,8 +504,10 @@ def mentorship_status():
         "has_mentor": row[3] == 'active',
         "mentor_id": row[1],
         "mentor_name": row[2],
-        "status": row[3]
+        "status": row[3],
+        "mentor_bio": row[3] # Placeholder for bio if needed
     })
+
 
 
 @app.route("/api/mentorship/respond", methods=["POST"])
@@ -542,7 +538,17 @@ def respond_mentorship():
 @app.route("/api/user/active-mentorship", methods=["GET"])
 @require_auth
 def active_mentorship():
-    return mentorship_status()
+    row = db_fetch_one("""
+        SELECT u.user_id, u.anonymous_name, u.bio
+        FROM recovery_mentorships m
+        JOIN users u ON m.mentor_id = u.user_id
+        WHERE m.user_id = %s::text AND m.status = 'active'
+    """, (request.user_id,))
+    if row:
+        return jsonify({"has_mentor": True, "mentor_id": row[0], "mentor_name": row[1], "mentor_bio": row[2]})
+    return jsonify({"has_mentor": False})
+
+
 
 
 
