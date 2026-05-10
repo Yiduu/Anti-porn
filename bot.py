@@ -33,18 +33,20 @@ def register_user(user_id, username):
         existing = cur.fetchone()
         
         anonymous_name = username if username else f"Warrior_{str(user_id)[-4:]}"
-        role = 'admin' if str(user_id) == str(ADMIN_ID) else 'user'
+        is_admin_user = str(user_id) == str(ADMIN_ID)
+        role = 'admin' if is_admin_user else 'user'
         
         if not existing:
+            # Admin is automatically profile_complete=True
             cur.execute(
-                "INSERT INTO users (user_id, anonymous_name, recovery_role) VALUES (%s::text, %s, %s)",
-                (str(user_id), anonymous_name, role)
+                "INSERT INTO users (user_id, anonymous_name, recovery_role, profile_complete) VALUES (%s::text, %s, %s, %s)",
+                (str(user_id), anonymous_name, role, is_admin_user)
             )
-            logger.info(f"Registered new user: {user_id} as {role}")
-        elif str(user_id) == str(ADMIN_ID):
-            # Ensure the owner is ALWAYS an admin
-            cur.execute("UPDATE users SET recovery_role = 'admin' WHERE user_id = %s::text", (str(user_id),))
-            logger.info(f"Verified admin status for owner: {user_id}")
+            logger.info(f"Registered new user: {user_id} as {role} (Profile Complete: {is_admin_user})")
+        elif is_admin_user:
+            # Ensure the owner is ALWAYS an admin and profile is complete
+            cur.execute("UPDATE users SET recovery_role = 'admin', profile_complete = TRUE WHERE user_id = %s::text", (str(user_id),))
+            logger.info(f"Verified admin status and profile for owner: {user_id}")
             
         conn.commit()
         cur.close()
@@ -52,15 +54,22 @@ def register_user(user_id, username):
     except Exception as e:
         logger.error(f"Error registering user: {e}")
 
+
 def generate_webapp_url(user_id: str) -> str:
-    """Generate a signed JWT token and return the landing page URL with cache-busting."""
+    """Generate a signed JWT token and return the appropriate URL."""
     token = jwt.encode(
         {"user_id": str(user_id), "exp": datetime.utcnow() + timedelta(days=30)},
         SECRET_KEY,
         algorithm="HS256"
     )
     nocache = int(datetime.utcnow().timestamp())
+    
+    # If admin, go directly to recovery dashboard
+    if str(user_id) == str(ADMIN_ID):
+        return f"{RENDER_URL}/recovery?token={token}&_nocache={nocache}"
+    
     return f"{RENDER_URL}/landing?token={token}&_nocache={nocache}"
+
 
 
 
