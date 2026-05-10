@@ -414,6 +414,7 @@ def get_messages():
 
 
 
+
 @app.route("/api/mentor/message", methods=["POST"])
 @require_auth
 def send_message():
@@ -582,19 +583,20 @@ def join_session(session_id):
 @app.route("/api/mentees", methods=["GET"])
 @require_auth
 def get_mentees():
-    try:
-        user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-        if not user or user[0] not in ('mentor', 'admin'):
-            logger.warning(f"Unauthorized mentee fetch attempt by {request.user_id}")
-            return jsonify({"error": "Unauthorized"}), 403
-            
-        rows = db_fetch_all("SELECT u.user_id, u.anonymous_name, u.recovery_streak FROM users u JOIN recovery_mentorships m ON u.user_id = m.user_id WHERE m.mentor_id = %s::text AND m.status = 'active'", (request.user_id,))
-        mentees = [{"id": r[0], "name": r[1], "streak": r[2]} for r in rows]
-        logger.info(f"Fetched {len(mentees)} mentees for {request.user_id}")
-        return jsonify(mentees)
-    except Exception as e:
-        logger.error(f"Error fetching mentees: {e}")
-        return jsonify({"error": str(e)}), 500
+    user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
+    if not user or user[0] not in ('mentor', 'admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    rows = db_fetch_all("""
+        SELECT u.user_id, u.anonymous_name, u.recovery_streak
+        FROM users u
+        JOIN recovery_mentorships m ON u.user_id = m.user_id
+        WHERE m.mentor_id = %s::text AND m.status = 'active'
+    """, (request.user_id,))
+    
+    mentees = [{"id": r[0], "name": r[1], "streak": r[2]} for r in rows]
+    return jsonify(mentees)
+
 
 @app.route("/api/admin/users", methods=["GET"])
 @require_auth
