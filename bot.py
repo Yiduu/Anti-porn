@@ -53,13 +53,15 @@ def register_user(user_id, username):
         logger.error(f"Error registering user: {e}")
 
 def generate_webapp_url(user_id: str) -> str:
-    """Generate a signed JWT token and return the landing page URL."""
+    """Generate a signed JWT token and return the landing page URL with cache-busting."""
     token = jwt.encode(
         {"user_id": str(user_id), "exp": datetime.utcnow() + timedelta(days=30)},
         SECRET_KEY,
         algorithm="HS256"
     )
-    return f"{RENDER_URL}/landing?token={token}"
+    nocache = int(datetime.utcnow().timestamp())
+    return f"{RENDER_URL}/landing?token={token}&_nocache={nocache}"
+
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
