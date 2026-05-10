@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Recovery Companion</title>
+    <title>CRC Recovery Companion</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* (keep original styles – same as my previous answer) */
         :root {
             --bg-dark: #050505;
             --card-bg: rgba(20, 20, 20, 0.7);
@@ -17,36 +16,52 @@
             --text-main: #FFFFFF;
             --text-dim: #A0A0A0;
             --safe-area-bottom: env(safe-area-inset-bottom);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-bg: rgba(255, 255, 255, 0.03);
         }
+
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
         body {
             background-color: var(--bg-dark);
-            background-image: radial-gradient(circle at 10% 20%, rgba(255, 215, 0, 0.05) 0%, transparent 40%),
-                              radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.05) 0%, transparent 40%);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(255, 215, 0, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.05) 0%, transparent 40%);
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
             line-height: 1.6;
             min-height: 100vh;
             overflow-x: hidden;
+            padding-bottom: 100px; /* Space for nav */
         }
+
         h1, h2, h3, .font-outfit { font-family: 'Outfit', sans-serif; }
+
         .app-container {
             max-width: 500px;
             margin: 0 auto;
-            padding: 20px 20px 100px;
+            padding: 20px;
         }
+
         .glass-card {
             background: var(--card-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
             border-radius: 24px;
             padding: 24px;
             margin-bottom: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             transition: transform 0.3s ease;
         }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
         .streak-badge {
             background: var(--accent-muted);
             border: 1px solid var(--accent);
@@ -59,8 +74,9 @@
             align-items: center;
             gap: 6px;
         }
+
         .btn-primary {
-            background: linear-gradient(135deg, #FFD700, #B8860B);
+            background: linear-gradient(135deg, var(--accent), #B8860B);
             color: #000;
             border: none;
             padding: 16px 24px;
@@ -76,45 +92,50 @@
             box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
             transition: all 0.2s ease;
         }
-        .btn-secondary {
-            background: rgba(255,255,255,0.1);
-            color: var(--text-main);
-            border: 1px solid rgba(255,255,255,0.2);
+
+        .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .btn-outline {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.1);
             padding: 12px 20px;
             border-radius: 16px;
             font-weight: 600;
             cursor: pointer;
-        }
-        .modal {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
-            backdrop-filter: blur(10px);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            overflow-y: auto;
-        }
-        .modal-content {
-            background: #111;
-            border-radius: 28px;
-            max-width: 450px;
             width: 100%;
-            padding: 24px;
-            border: 1px solid rgba(255,215,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
         }
-        select, input, textarea {
+        .btn-outline:active { background: rgba(255,255,255,0.1); }
+
+        .verse-box {
+            position: relative;
+            padding-left: 20px;
+            border-left: 3px solid var(--accent);
+            margin: 20px 0;
+        }
+
+        .verse-text { font-style: italic; font-size: 17px; color: #ddd; margin-bottom: 10px; }
+        .verse-ref { font-weight: 600; color: var(--accent); font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+
+        textarea, input[type="text"], input[type="number"], select {
             width: 100%;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            padding: 12px;
+            border-radius: 16px;
+            padding: 15px;
             color: #fff;
+            font-family: inherit;
             margin-bottom: 15px;
+            outline: none;
         }
+        textarea:focus, input:focus, select:focus { border-color: var(--accent); background: rgba(255,255,255,0.08); }
+
         .nav-bar {
             position: fixed;
             bottom: 20px;
@@ -122,13 +143,16 @@
             right: 20px;
             background: rgba(15, 15, 15, 0.85);
             backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 24px;
             display: flex;
             justify-content: space-around;
             padding: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
             z-index: 1000;
         }
+
         .nav-item {
             display: flex;
             flex-direction: column;
@@ -138,489 +162,724 @@
             font-size: 11px;
             font-weight: 500;
             cursor: pointer;
+            transition: all 0.3s ease;
             flex: 1;
         }
         .nav-item.active { color: var(--accent); }
+        .nav-item i { width: 22px; height: 22px; }
+
         .page { display: none; animation: fadeIn 0.4s ease forwards; }
         .page.active { display: block; }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .mentor-card {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            cursor: pointer;
+
+        /* Modal / Registration Overlay */
+        #registration-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 2000;
+            display: none;
+            overflow-y: auto;
+            padding: 40px 20px;
+            backdrop-filter: blur(10px);
         }
-        .pending-badge {
-            background: #ffaa00;
-            color: #000;
-            padding: 4px 8px;
-            border-radius: 20px;
-            font-size: 12px;
-        }
-        .request-item {
-            background: rgba(255,255,255,0.03);
-            padding: 12px;
-            border-radius: 16px;
-            margin-bottom: 12px;
-        }
+
         .chat-container {
-            height: 350px;
+            height: calc(100vh - 350px);
+            min-height: 250px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 12px;
             margin-bottom: 15px;
+            padding: 10px;
         }
+
         .msg {
-            max-width: 85%;
+            max-width: 80%;
             padding: 12px 16px;
             border-radius: 18px;
             font-size: 14px;
+            position: relative;
         }
-        .msg.sent {
-            align-self: flex-end;
-            background: var(--accent);
-            color: #000;
-            border-bottom-right-radius: 4px;
-        }
-        .msg.received {
-            align-self: flex-start;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            border-bottom-left-radius: 4px;
-        }
+        .msg.sent { align-self: flex-end; background: var(--accent); color: #000; border-bottom-right-radius: 4px; }
+        .msg.received { align-self: flex-start; background: rgba(255,255,255,0.1); color: #fff; border-bottom-left-radius: 4px; }
         .msg-info { font-size: 10px; opacity: 0.6; margin-top: 4px; }
-        .loader { text-align: center; padding: 20px; }
+
+        .loader { display: flex; justify-content: center; align-items: center; padding: 40px; width: 100%; }
         .spinner {
-            width: 30px;
-            height: 30px;
+            width: 30px; height: 30px;
             border: 3px solid rgba(255,215,0,0.1);
             border-top: 3px solid var(--accent);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin: 0 auto;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        .mentor-card {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: var(--glass-bg);
+            padding: 15px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .avatar {
+            width: 50px; height: 50px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), #B8860B);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; color: #000; font-size: 20px;
+        }
+
+        .badge-pending { background: #FFA500; color: #000; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .badge-active { background: #4CAF50; color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
 </head>
 <body>
-<div class="app-container">
-    <!-- Dashboard Page -->
-    <div id="dashboard-page" class="page active">
-        <div class="header">
-            <div><p style="color: var(--text-dim); font-size: 14px;">Welcome back,</p><h2 id="user-name">...</h2></div>
-            <div class="streak-badge"><i data-lucide="flame"></i><span id="streak">0</span> Days</div>
-        </div>
-        <div class="glass-card">
-            <h3>Daily Check-In</h3>
-            <button class="btn-primary" id="checkin-btn"><i data-lucide="check-circle"></i> Yes, I am Clean</button>
-        </div>
-        <div class="glass-card">
-            <h3>Daily Verse</h3>
-            <div id="verse-content"><p id="verse-text">Loading...</p><p id="verse-ref"></p></div>
-            <textarea id="reflection-text" placeholder="Journal your thoughts..."></textarea>
-            <button class="btn-primary" id="save-reflection" style="background: rgba(255,255,255,0.1);">Save Reflection</button>
-        </div>
-        <!-- Mentor Section (for users) -->
-        <div id="user-mentor-section" class="glass-card" style="display: none;">
-            <h3>🙏 Your Mentor</h3>
-            <div id="active-mentor-info"></div>
-            <div id="pending-mentor-info"></div>
-            <div id="mentor-list-container"></div>
-        </div>
-        <div class="glass-card">
-            <h3>Live Sessions</h3>
-            <div id="sessions-list"><div class="loader"><div class="spinner"></div></div></div>
+    <!-- Registration Overlay -->
+    <div id="registration-overlay">
+        <div class="app-container">
+            <h1 class="font-outfit" style="font-size: 28px; margin-bottom: 10px; text-align: center;">Welcome, Warrior</h1>
+            <p style="text-align: center; color: var(--text-dim); margin-bottom: 30px;">Let's complete your profile to start your journey.</p>
+            
+            <div class="glass-card">
+                <label>Sex</label>
+                <select id="reg-sex">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+
+                <label>Age</label>
+                <input type="number" id="reg-age" placeholder="Your age">
+
+                <label>Educational Level</label>
+                <input type="text" id="reg-edu" placeholder="e.g. University Graduate">
+
+                <label>When did the addiction start?</label>
+                <select id="reg-addiction">
+                    <option value="<18">Under 18</option>
+                    <option value="18-22">18 - 22 years</option>
+                    <option value="23-30">23 - 30 years</option>
+                    <option value=">30">Over 30</option>
+                </select>
+
+                <label>Longest porn-free streak (days)</label>
+                <input type="number" id="reg-streak" placeholder="0">
+
+                <button class="btn-primary" id="reg-submit-btn" onclick="submitRegistration()">Complete Setup</button>
+            </div>
         </div>
     </div>
 
-    <!-- Chat Page -->
-    <div id="chat-page" class="page">
-        <div id="chat-list-view">
-            <h2>Messages</h2>
-            <div id="mentee-list" class="glass-card"><div class="loader"><div class="spinner"></div></div></div>
-        </div>
-        <div id="chat-messages-view" style="display:none;">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
-                <button class="glass-card" style="padding:10px;" onclick="window.showChatList()"><i data-lucide="arrow-left"></i></button>
-                <h2 id="chat-title">Chat</h2>
-                <button id="video-call-btn" style="display:none;" class="glass-card" onclick="window.startPrivateVideoCall()"><i data-lucide="video"></i></button>
+    <div class="app-container">
+        <!-- Home / Dashboard -->
+        <div id="dashboard-page" class="page active">
+            <div class="header">
+                <div>
+                    <p style="color: var(--text-dim); font-size: 14px;">Welcome back,</p>
+                    <h2 id="user-name">...</h2>
+                </div>
+                <div class="streak-badge">
+                    <i data-lucide="flame"></i>
+                    <span id="streak">0</span> Days
+                </div>
             </div>
+
             <div class="glass-card">
-                <div id="chat-messages" class="chat-container">Loading messages...</div>
-                <div style="display:flex; gap:10px; margin-top:15px;">
-                    <textarea id="chat-input" style="min-height:50px;" placeholder="Message..."></textarea>
-                    <button id="send-message" style="width:50px; border-radius:50%; background:var(--accent);"><i data-lucide="send"></i></button>
+                <h3 style="margin-bottom: 15px;">Daily Check-In</h3>
+                <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 20px;">Have you stayed strong today?</p>
+                <button class="btn-primary" id="checkin-btn" onclick="dailyCheckIn()">
+                    <i data-lucide="check-circle"></i> Yes, I am Clean
+                </button>
+            </div>
+
+            <div class="glass-card">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <i data-lucide="book-open" style="color: var(--accent); width: 20px;"></i>
+                    <h3>Daily Bible Verse</h3>
+                </div>
+                <div id="verse-content" class="verse-box">
+                    <p class="verse-text" id="verse-text">Loading inspiration...</p>
+                    <p class="verse-ref" id="verse-ref"></p>
+                </div>
+                <textarea id="reflection-text" placeholder="Journal your thoughts or prayers..."></textarea>
+                <button class="btn-outline" id="save-reflection" onclick="saveReflection()">
+                    <i data-lucide="save"></i> Save Reflection
+                </button>
+            </div>
+
+            <div class="glass-card">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                    <i data-lucide="video" style="color: var(--accent); width: 20px;"></i>
+                    <h3>Live Sessions</h3>
+                </div>
+                <div id="sessions-list">
+                    <div class="loader"><div class="spinner"></div></div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Profile Page -->
-    <div id="profile-page" class="page">
-        <h2>Account Settings</h2>
-        <span id="role-badge" class="glass-card" style="display:inline-block; margin-bottom:15px;"></span>
-        <div id="admin-section" class="glass-card" style="display:none;"><h3>Admin Actions</h3><button class="btn-primary" onclick="window.location.href='/admin?token='+token">Open Admin Panel</button></div>
-        <div id="mentor-section" class="glass-card" style="display:none;"><h3>Mentor Tools</h3><button class="btn-secondary" onclick="window.switchPage('mentor-requests')">📋 View Pending Requests</button></div>
-        <div class="glass-card">
-            <label>Anonymous Name</label><input type="text" id="profile-name">
-            <label>Bio</label><textarea id="profile-bio"></textarea>
-            <label>Notifications</label><input type="checkbox" id="profile-notifs" checked>
-            <button class="btn-primary" id="save-profile">Save Changes</button>
+        <!-- Mentorship / Chat Page -->
+        <div id="chat-page" class="page">
+            <h2 style="margin-bottom: 20px;">Mentorship</h2>
+
+            <!-- User: Mentorship Status / Find Mentor -->
+            <div id="mentorship-status-view" style="display: none;">
+                <!-- If no mentor -->
+                <div id="no-mentor-view" style="display: none;">
+                    <div class="glass-card" style="text-align: center;">
+                        <i data-lucide="users" style="width: 50px; height: 50px; color: var(--accent); margin: 0 auto 15px;"></i>
+                        <h3>Find a Mentor</h3>
+                        <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 20px;">Connect with an experienced mentor for accountability and guidance.</p>
+                        <div id="available-mentors-list">
+                            <div class="loader"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- If pending mentor -->
+                <div id="pending-mentor-view" style="display: none;" class="glass-card">
+                    <div style="text-align: center;">
+                        <i data-lucide="clock" style="width: 40px; height: 40px; color: #FFA500; margin: 0 auto 10px;"></i>
+                        <h3>Request Pending</h3>
+                        <p style="color: var(--text-dim); font-size: 14px;">Your request to <strong id="pending-mentor-name">...</strong> is awaiting approval.</p>
+                    </div>
+                </div>
+
+                <!-- If active mentor -->
+                <div id="active-chat-view" style="display: none;">
+                    <div class="glass-card" style="padding: 0; background: transparent; border: none; box-shadow: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; padding: 0 5px;">
+                             <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="avatar" id="active-mentor-initial">M</div>
+                                <div>
+                                    <h3 id="active-mentor-name">Mentor Name</h3>
+                                    <span class="badge-active">Online</span>
+                                </div>
+                             </div>
+                             <button class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%;" onclick="startPrivateVideoCall()">
+                                <i data-lucide="video" style="color: var(--accent);"></i>
+                             </button>
+                        </div>
+                        
+                        <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
+                            <div id="chat-messages" class="chat-container">
+                                <div class="loader"><div class="spinner"></div></div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: flex-end;">
+                                <textarea id="chat-input" style="margin-bottom: 0; min-height: 50px; border-radius: 20px;" placeholder="Type a message..."></textarea>
+                                <button onclick="sendMessage()" style="width: 50px; height: 50px; border-radius: 50%; background: var(--accent); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <i data-lucide="send" style="color: #000; width: 20px;"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mentor / Admin: Mentees and Requests -->
+            <div id="mentor-tools-view" style="display: none;">
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 15px;">Pending Requests</h3>
+                    <div id="pending-requests-list">
+                        <p style="color: var(--text-dim); font-size: 13px;">No pending requests.</p>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 15px;">My Mentees</h3>
+                    <div id="mentees-list">
+                        <div class="loader"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
 
-    <!-- Mentor Requests Page (new tab for mentors) -->
-    <div id="mentor-requests-page" class="page">
-        <h2>Mentorship Requests</h2>
-        <div id="pending-requests-list" class="glass-card"></div>
-    </div>
-</div>
+        <!-- Sessions Management (for mentors) / Joining -->
+        <div id="sessions-page" class="page">
+             <h2 style="margin-bottom: 20px;">Sessions</h2>
+             
+             <div id="mentor-create-session" style="display: none;" class="glass-card">
+                <h3 style="color: var(--accent); margin-bottom: 15px;">Create Live Session</h3>
+                <input type="text" id="new-session-title" placeholder="Session Title">
+                <textarea id="new-session-desc" placeholder="Brief description..."></textarea>
+                <label style="font-size: 12px; color: var(--text-dim); margin-bottom: 5px; display: block;">Scheduled Time</label>
+                <input type="datetime-local" id="new-session-time">
+                <button class="btn-primary" onclick="createSession()">
+                    <i data-lucide="plus-circle"></i> Create Session
+                </button>
+             </div>
 
-<!-- Registration Modal -->
-<div id="registration-modal" class="modal" style="display:none;">
-    <div class="modal-content">
-        <h2 style="margin-bottom:20px;">Complete Your Profile</h2>
-        <select id="reg-sex"><option value="">Sex</option><option>Male</option><option>Female</option><option>Other</option></select>
-        <input type="number" id="reg-age" placeholder="Age">
-        <select id="reg-education"><option value="">Education Level</option><option>High School</option><option>Bachelor's</option><option>Master's</option><option>PhD</option><option>Other</option></select>
-        <select id="reg-addiction-year"><option value="">Addiction started (year)</option><option><18</option><option>18-22</option><option>23-30</option><option>>30</option></select>
-        <input type="number" id="reg-longest-streak" placeholder="Longest porn‑free streak (days)">
-        <button class="btn-primary" id="submit-registration">Start My Journey</button>
-    </div>
-</div>
+             <div class="glass-card">
+                <h3 style="margin-bottom: 15px;">Upcoming Live Sessions</h3>
+                <div id="sessions-list-full">
+                    <div class="loader"><div class="spinner"></div></div>
+                </div>
+             </div>
+        </div>
 
-<nav class="nav-bar">
-    <div class="nav-item active" data-page="dashboard"><i data-lucide="home"></i><span>Home</span></div>
-    <div class="nav-item" data-page="chat"><i data-lucide="message-circle"></i><span>Chat</span></div>
-    <div class="nav-item" data-page="profile"><i data-lucide="user"></i><span>Profile</span></div>
-</nav>
+        <!-- Profile / Settings -->
+        <div id="profile-page" class="page">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 id="profile-display-name">Profile</h2>
+                <span id="role-badge" style="font-size: 10px; padding: 4px 10px; background: var(--accent-muted); color: var(--accent); border-radius: 8px; border: 1px solid var(--accent);">USER</span>
+            </div>
 
-<script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
-    const token = "{{ token }}";
-    let userId = null, userRole = null, profileComplete = false;
-    let currentChatId = null;
+            <div class="glass-card">
+                <label style="font-size: 12px; color: var(--text-dim);">DISPLAY NAME</label>
+                <input type="text" id="profile-name" placeholder="Anonymous Warrior">
+                
+                <label style="font-size: 12px; color: var(--text-dim);">BIO / MOTIVATION</label>
+                <textarea id="profile-bio" placeholder="What keeps you going?"></textarea>
 
-    // Helper API call
-    async function apiFetch(path, options = {}) {
-        const url = path.includes('?') ? `${path}&_=${Date.now()}` : `${path}?_=${Date.now()}`;
-        const res = await fetch(url, {
-            headers: { "Authorization": token, "Content-Type": "application/json" },
-            ...options
-        });
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(errText || `HTTP ${res.status}`);
-        }
-        return res.json();
-    }
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <span style="font-size: 14px;">Telegram Notifications</span>
+                    <input type="checkbox" id="profile-notifs" checked>
+                </div>
 
-    // Load user data and check registration
-    async function loadUserAndProfile() {
-        try {
-            const user = await apiFetch("/api/user/me");
-            userId = user.user_id;
-            userRole = user.role;
-            profileComplete = user.profile_complete;
-            document.getElementById("user-name").innerText = user.name;
-            document.getElementById("streak").innerText = user.streak;
-            document.getElementById("profile-name").value = user.name;
-            document.getElementById("role-badge").innerText = user.role.toUpperCase();
-            document.getElementById("role-badge").style.background = user.role === 'admin' ? 'rgba(255,0,0,0.2)' : (user.role === 'mentor' ? 'rgba(0,255,0,0.2)' : 'rgba(255,255,255,0.1)');
-            if (user.role === 'admin') document.getElementById("admin-section").style.display = "block";
-            if (user.role === 'mentor' || user.role === 'admin') document.getElementById("mentor-section").style.display = "block";
+                <button class="btn-primary" onclick="saveProfile()">Save Changes</button>
+            </div>
+
+            <div id="admin-link" style="display: none;" class="glass-card">
+                <h3 style="color: var(--accent); margin-bottom: 10px;">Admin Control</h3>
+                <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 15px;">Manage users, roles, and global messages.</p>
+                <button class="btn-outline" onclick="window.location.href='/admin?token='+token">
+                    <i data-lucide="shield"></i> Open Admin Panel
+                </button>
+            </div>
             
-            if (!profileComplete) {
-                document.getElementById("registration-modal").style.display = "flex";
-            } else {
-                document.getElementById("registration-modal").style.display = "none";
-                await loadDashboardContent();
-            }
-        } catch (err) {
-            console.error("loadUserAndProfile error:", err);
-            alert("Failed to load profile. Please refresh.");
-        }
-    }
+            <p style="text-align: center; color: var(--text-dim); font-size: 11px;">Version 2.0.0 • Faith Based Recovery</p>
+        </div>
 
-    // Dashboard content (verse, sessions, mentor section)
-    async function loadDashboardContent() {
-        try {
-            const verse = await apiFetch("/api/daily-verse");
-            document.getElementById("verse-text").innerText = verse.text;
-            document.getElementById("verse-ref").innerText = verse.reference;
+        <!-- Navigation -->
+        <nav class="nav-bar">
+            <div class="nav-item active" onclick="switchPage('dashboard')">
+                <i data-lucide="home"></i>
+                <span>Home</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('chat')">
+                <i data-lucide="message-circle"></i>
+                <span>Chat</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('sessions')">
+                <i data-lucide="video"></i>
+                <span>Live</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('profile')">
+                <i data-lucide="user"></i>
+                <span>Profile</span>
+            </div>
+        </nav>
+    </div>
 
-            const sessions = await apiFetch("/api/sessions");
-            let sessionsHtml = sessions.length ? "" : "<p>No upcoming sessions.</p>";
-            sessions.forEach(s => {
-                sessionsHtml += `<div class="session-item" style="margin-bottom:15px;"><div><b>${s.title}</b><br>${new Date(s.time).toLocaleString()}</div><button class="btn-secondary" style="margin-top:8px;" onclick="window.joinSession(${s.id})">Join</button></div>`;
-            });
-            document.getElementById("sessions-list").innerHTML = sessionsHtml;
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
 
-            // Mentor section for regular users
-            if (userRole !== 'mentor' && userRole !== 'admin') {
-                const mentorDiv = document.getElementById("user-mentor-section");
-                mentorDiv.style.display = "block";
-                const mentorship = await apiFetch("/api/user/active-mentorship");
-                if (mentorship.has_mentor) {
-                    document.getElementById("active-mentor-info").innerHTML = `<p>✅ Your mentor: <strong>${mentorship.mentor_name}</strong><br>${mentorship.mentor_bio}</p><button class="btn-secondary" onclick="window.openChat('${mentorship.mentor_id}', '${mentorship.mentor_name}')">Message Mentor</button>`;
-                    document.getElementById("pending-mentor-info").innerHTML = "";
-                    document.getElementById("mentor-list-container").innerHTML = "";
-                } else {
-                    // Check pending request (by trying to fetch requests as user – API will return empty if none)
-                    try {
-                        const pending = await apiFetch("/api/mentorship/requests?as_user=true").catch(() => []);
-                        if (pending.length) {
-                            document.getElementById("pending-mentor-info").innerHTML = `<p class="pending-badge">⏳ Mentorship request pending approval</p>`;
-                            document.getElementById("mentor-list-container").innerHTML = "";
-                        } else {
-                            const mentors = await apiFetch("/api/mentors");
-                            if (mentors.length) {
-                                let listHtml = "<h4>Choose a Mentor</h4>";
-                                mentors.forEach(m => {
-                                    listHtml += `<div class="mentor-card" onclick="window.requestMentor('${m.id}')"><div><b>${m.name}</b><br>${m.bio}</div><button class="btn-secondary">Request</button></div>`;
-                                });
-                                document.getElementById("mentor-list-container").innerHTML = listHtml;
-                            } else {
-                                document.getElementById("mentor-list-container").innerHTML = "<p>No mentors available yet.</p>";
-                            }
-                        }
-                    } catch (e) {
-                        document.getElementById("mentor-list-container").innerHTML = "<p>Error loading mentors.</p>";
-                    }
+        const token = "{{ token }}";
+        let user = null;
+        let currentChatId = null;
+        let chatInterval = null;
+
+        // Custom Haptic Helper
+        const haptic = {
+            impact: (style='medium') => tg.HapticFeedback.impactOccurred(style),
+            notify: (type='success') => tg.HapticFeedback.notificationOccurred(type),
+            selection: () => tg.HapticFeedback.selectionChanged()
+        };
+
+        async function api(path, options = {}) {
+            try {
+                const res = await fetch(`${path}${path.includes('?') ? '&' : '?'}v=${Date.now()}`, {
+                    headers: { "Authorization": token, "Content-Type": "application/json" },
+                    ...options
+                });
+                if (res.status === 401) {
+                    tg.showAlert("Session expired. Please restart the bot.");
+                    return null;
                 }
+                return await res.json();
+            } catch (e) {
+                console.error("API Error:", e);
+                return { error: "Network error" };
             }
-        } catch (err) {
-            console.error("loadDashboardContent error:", err);
         }
-    }
 
-    window.requestMentor = async (mentorId) => {
-        try {
-            await apiFetch("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: mentorId }) });
-            alert("Request sent to mentor!");
-            await loadDashboardContent();
-        } catch (err) {
-            alert("Error: " + err.message);
+        async function init() {
+            user = await api("/api/user/me");
+            if (!user) return;
+
+            // Check if profile complete
+            if (!user.profile_complete) {
+                document.getElementById("registration-overlay").style.display = "block";
+            }
+
+            // Update UI with user data
+            document.getElementById("user-name").innerText = user.name || "Warrior";
+            document.getElementById("profile-display-name").innerText = user.name || "Profile";
+            document.getElementById("streak").innerText = user.streak || 0;
+            document.getElementById("profile-name").value = user.name || "";
+            document.getElementById("profile-bio").value = user.bio || "";
+            document.getElementById("role-badge").innerText = user.role.toUpperCase();
+
+            if (user.role === 'admin') {
+                document.getElementById("admin-link").style.display = "block";
+            }
+            
+            if (user.role === 'mentor' || user.role === 'admin') {
+                document.getElementById("mentor-create-session").style.display = "block";
+                document.getElementById("mentor-tools-view").style.display = "block";
+            } else {
+                document.getElementById("mentorship-status-view").style.display = "block";
+            }
+
+            loadDashboard();
+            lucide.createIcons();
         }
-    };
 
-    // Load pending requests for mentors
-    async function loadMentorRequests() {
-        if (userRole !== 'mentor' && userRole !== 'admin') return;
-        try {
-            const requests = await apiFetch("/api/mentorship/requests");
-            const container = document.getElementById("pending-requests-list");
-            if (!requests.length) {
-                container.innerHTML = "<p>No pending requests.</p>";
+        async function submitRegistration() {
+            const data = {
+                sex: document.getElementById("reg-sex").value,
+                age: parseInt(document.getElementById("reg-age").value),
+                educational_level: document.getElementById("reg-edu").value,
+                addiction_year: document.getElementById("reg-addiction").value,
+                longest_free_streak: parseInt(document.getElementById("reg-streak").value)
+            };
+
+            if (!data.age || !data.educational_level) {
+                tg.showAlert("Please fill in all fields.");
                 return;
             }
-            container.innerHTML = requests.map(r => `
-                <div class="request-item">
-                    <b>${r.name}</b> (Streak: ${r.streak} days)<br>${r.bio}<br>
-                    <button class="btn-secondary" onclick="window.respondToRequest(${r.request_id}, 'accept')">Accept</button>
-                    <button class="btn-secondary" style="background:rgba(255,0,0,0.2);" onclick="window.respondToRequest(${r.request_id}, 'reject')">Decline</button>
-                </div>
-            `).join("");
-        } catch (err) {
-            console.error(err);
-            document.getElementById("pending-requests-list").innerHTML = "<p>Error loading requests.</p>";
-        }
-    }
 
-    window.respondToRequest = async (reqId, action) => {
-        await apiFetch("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: reqId, action }) });
-        alert(`Request ${action}ed`);
-        await loadMentorRequests();
-    };
-
-    // Chat list (mentees for mentors, or active mentor for users)
-    async function loadChatList() {
-        const listDiv = document.getElementById("mentee-list");
-        listDiv.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-        try {
-            if (userRole === 'mentor' || userRole === 'admin') {
-                const mentees = await apiFetch("/api/mentees");
-                if (!mentees.length) {
-                    listDiv.innerHTML = "<p style='padding:20px; text-align:center;'>No mentees assigned yet.</p>";
-                } else {
-                    listDiv.innerHTML = mentees.map(m => `
-                        <div class="mentor-card" onclick="window.openChat('${m.id}', '${m.name}')">
-                            <div><b>${m.name}</b><br>Streak: ${m.streak} days</div>
-                            <i data-lucide="chevron-right"></i>
-                        </div>
-                    `).join("");
-                    lucide.createIcons();
-                }
+            document.getElementById("reg-submit-btn").disabled = true;
+            const res = await api("/api/profile/complete", { method: "POST", body: JSON.stringify(data) });
+            if (res.success) {
+                haptic.notify('success');
+                document.getElementById("registration-overlay").style.display = "none";
+                init();
             } else {
-                // Regular user: show only their active mentor (if any)
-                const mentorship = await apiFetch("/api/user/active-mentorship");
-                if (mentorship.has_mentor) {
-                    listDiv.innerHTML = `
-                        <div class="mentor-card" onclick="window.openChat('${mentorship.mentor_id}', '${mentorship.mentor_name}')">
-                            <div><b>${mentorship.mentor_name}</b><br>Your mentor</div>
-                            <i data-lucide="chevron-right"></i>
+                tg.showAlert("Error saving profile. Try again.");
+                document.getElementById("reg-submit-btn").disabled = false;
+            }
+        }
+
+        async function loadDashboard() {
+            const verse = await api("/api/daily-verse");
+            if (verse) {
+                document.getElementById("verse-text").innerText = verse.text;
+                document.getElementById("verse-ref").innerText = verse.reference;
+            }
+
+            const sessions = await api("/api/sessions");
+            const list = document.getElementById("sessions-list");
+            const listFull = document.getElementById("sessions-list-full");
+            
+            let html = "";
+            if (!sessions || sessions.length === 0) {
+                html = "<p style='color: var(--text-dim); font-size: 13px;'>No upcoming sessions.</p>";
+            } else {
+                sessions.forEach(s => {
+                    html += `
+                        <div class="mentor-card">
+                            <div style="flex: 1;">
+                                <h4 style="font-size: 14px;">${s.title}</h4>
+                                <p style="font-size: 11px; color: var(--text-dim);">${new Date(s.time).toLocaleString()}</p>
+                            </div>
+                            <button class="btn-primary" style="width: auto; padding: 8px 15px; font-size: 12px;" onclick="joinSession(${s.id})">Join</button>
+                            ${(user.role === 'admin' || user.role === 'mentor') ? `<button onclick="deleteSession(${s.id})" style="background: rgba(255,0,0,0.1); border: none; color: #ff5555; padding: 8px; border-radius: 8px;"><i data-lucide="trash-2" style="width: 16px;"></i></button>` : ''}
                         </div>
                     `;
-                    lucide.createIcons();
-                } else {
-                    listDiv.innerHTML = "<p style='padding:20px; text-align:center;'>No active mentor yet. Request one from the Home tab.</p>";
-                }
+                });
             }
-        } catch (err) {
-            console.error("loadChatList error:", err);
-            listDiv.innerHTML = "<p style='color:#ff5555;'>Failed to load chats. Please try again.</p>";
+            list.innerHTML = html;
+            listFull.innerHTML = html;
+            lucide.createIcons();
         }
-    }
 
-    window.openChat = async (otherUserId, otherName) => {
-        currentChatId = otherUserId;
-        document.getElementById("chat-title").innerText = otherName;
-        document.getElementById("chat-list-view").style.display = "none";
-        document.getElementById("chat-messages-view").style.display = "block";
-        if (userRole === 'mentor' || userRole === 'admin') {
-            document.getElementById("video-call-btn").style.display = "block";
-        } else {
-            document.getElementById("video-call-btn").style.display = "none";
+        async function dailyCheckIn() {
+            haptic.impact('heavy');
+            const res = await api("/api/checkin", { method: "POST", body: JSON.stringify({ status: "yes" }) });
+            if (res.streak !== undefined) {
+                document.getElementById("streak").innerText = res.streak;
+                tg.showAlert("Hallelujah! Your streak is now " + res.streak + " days. Keep going!");
+            } else {
+                tg.showAlert(res.error || "Already checked in today!");
+            }
         }
-        // Load messages
-        const container = document.getElementById("chat-messages");
-        container.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
-        try {
-            const msgs = await apiFetch(`/api/mentor/messages?receiver_id=${currentChatId}`);
-            if (!msgs.length) {
-                container.innerHTML = "<p style='text-align:center; padding:40px;'>No messages yet. Start the conversation.</p>";
+
+        async function saveReflection() {
+            const text = document.getElementById("reflection-text").value;
+            if (!text) return;
+            const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ verse_text: document.getElementById("verse-text").innerText, reflection_text: text }) });
+            if (res.success) {
+                haptic.notify('success');
+                tg.showScanQrPopup({ text: "Reflection saved!" }); // Just to show something
+                setTimeout(() => tg.closeScanQrPopup(), 1000);
+                document.getElementById("reflection-text").value = "";
+            }
+        }
+
+        async function switchPage(page) {
+            haptic.selection();
+            document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+            document.getElementById(`${page}-page`).classList.add("active");
+            
+            document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+            document.querySelector(`.nav-item[onclick="switchPage('${page}')"]`).classList.add("active");
+
+            if (page === 'chat') loadMentorshipTab();
+            if (page === 'sessions') loadDashboard();
+            if (page === 'dashboard') loadDashboard();
+            
+            if (page !== 'chat') {
+                clearInterval(chatInterval);
+                chatInterval = null;
+            }
+        }
+
+        async function loadMentorshipTab() {
+            if (user.role === 'user') {
+                const mentorship = await api("/api/user/active-mentorship");
+                const noView = document.getElementById("no-mentor-view");
+                const pendingView = document.getElementById("pending-mentor-view");
+                const activeView = document.getElementById("active-chat-view");
+                
+                noView.style.display = "none";
+                pendingView.style.display = "none";
+                activeView.style.display = "none";
+
+                if (!mentorship) {
+                    noView.style.display = "block";
+                    loadAvailableMentors();
+                } else if (mentorship.status === 'pending') {
+                    pendingView.style.display = "block";
+                    document.getElementById("pending-mentor-name").innerText = mentorship.name;
+                } else {
+                    activeView.style.display = "block";
+                    document.getElementById("active-mentor-name").innerText = mentorship.name;
+                    document.getElementById("active-mentor-initial").innerText = mentorship.name[0];
+                    loadMessages();
+                    if (!chatInterval) chatInterval = setInterval(loadMessages, 5000);
+                }
+            } else {
+                // Mentor/Admin view
+                loadMentorTools();
+            }
+        }
+
+        async function loadAvailableMentors() {
+            const mentors = await api("/api/mentors");
+            const list = document.getElementById("available-mentors-list");
+            if (!mentors || mentors.length === 0) {
+                list.innerHTML = "<p style='color: var(--text-dim);'>No mentors available right now.</p>";
+                return;
+            }
+            list.innerHTML = mentors.map(m => `
+                <div class="mentor-card">
+                    <div class="avatar">${m.name[0]}</div>
+                    <div style="flex: 1; text-align: left;">
+                        <h4 style="font-size: 14px;">${m.name}</h4>
+                        <p style="font-size: 11px; color: var(--text-dim);">${m.bio || 'Accountability Mentor'}</p>
+                    </div>
+                    <button class="btn-primary" style="width: auto; padding: 8px 12px; font-size: 11px;" onclick="requestMentor('${m.id}')">Request</button>
+                </div>
+            `).join("");
+        }
+
+        async function requestMentor(mentorId) {
+            haptic.impact('medium');
+            const res = await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: mentorId }) });
+            if (res.success) {
+                tg.showAlert("Request sent! You'll be notified when they accept.");
+                loadMentorshipTab();
+            } else {
+                tg.showAlert(res.error);
+            }
+        }
+
+        async function loadMentorTools() {
+            const requests = await api("/api/mentorship/requests");
+            const reqList = document.getElementById("pending-requests-list");
+            if (!requests || requests.length === 0) {
+                reqList.innerHTML = "<p style='color: var(--text-dim); font-size: 13px;'>No pending requests.</p>";
+            } else {
+                reqList.innerHTML = requests.map(r => `
+                    <div class="mentor-card">
+                        <div style="flex: 1;">
+                            <h4 style="font-size: 14px;">${r.name}</h4>
+                            <p style="font-size: 11px; color: var(--text-dim);">Streak: ${r.streak} days</p>
+                        </div>
+                        <button class="btn-primary" style="width: auto; padding: 6px 10px; font-size: 11px; background: #4CAF50;" onclick="respondRequest(${r.id}, 'accept')">Accept</button>
+                        <button class="btn-outline" style="width: auto; padding: 6px 10px; font-size: 11px; border-color: #ff5555; color: #ff5555;" onclick="respondRequest(${r.id}, 'reject')">Decline</button>
+                    </div>
+                `).join("");
+            }
+
+            const mentees = await api("/api/mentees");
+            const mList = document.getElementById("mentees-list");
+            if (!mentees || mentees.length === 0) {
+                mList.innerHTML = "<p style='color: var(--text-dim); font-size: 13px;'>No active mentees.</p>";
+            } else {
+                mList.innerHTML = mentees.map(m => `
+                    <div class="mentor-card" style="cursor: pointer;" onclick="openMentorChat('${m.id}', '${m.name}')">
+                        <div class="avatar">${m.name[0]}</div>
+                        <div style="flex: 1;">
+                            <h4 style="font-size: 14px;">${m.name}</h4>
+                            <p style="font-size: 11px; color: var(--text-dim);">Streak: ${m.streak} days</p>
+                        </div>
+                        <i data-lucide="chevron-right" style="color: var(--text-dim); width: 16px;"></i>
+                    </div>
+                `).join("");
+                lucide.createIcons();
+            }
+        }
+
+        async function respondRequest(reqId, action) {
+            const res = await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: reqId, action }) });
+            if (res.success) {
+                haptic.notify('success');
+                loadMentorTools();
+            }
+        }
+
+        function openMentorChat(menteeId, menteeName) {
+            currentChatId = menteeId;
+            document.getElementById("mentor-tools-view").style.display = "none";
+            document.getElementById("active-chat-view").style.display = "block";
+            document.getElementById("active-mentor-name").innerText = menteeName;
+            document.getElementById("active-mentor-initial").innerText = menteeName[0];
+            
+            // Allow going back
+            const backBtn = document.createElement("button");
+            backBtn.className = "btn-outline";
+            backBtn.style = "width: auto; padding: 5px 10px; margin-bottom: 10px; font-size: 12px;";
+            backBtn.innerHTML = "<i data-lucide='arrow-left' style='width: 14px;'></i> Back to List";
+            document.getElementById("active-chat-view").prepend(backBtn);
+            backBtn.onclick = () => {
+                document.getElementById("active-chat-view").style.display = "none";
+                document.getElementById("mentor-tools-view").style.display = "block";
+                backBtn.remove();
+                currentChatId = null;
+                clearInterval(chatInterval);
+                chatInterval = null;
+            };
+            lucide.createIcons();
+
+            loadMessages();
+            if (!chatInterval) chatInterval = setInterval(loadMessages, 5000);
+        }
+
+        async function loadMessages() {
+            const path = currentChatId ? `/api/mentor/messages?receiver_id=${currentChatId}` : "/api/mentor/messages";
+            const msgs = await api(path);
+            const container = document.getElementById("chat-messages");
+            if (!msgs) return;
+
+            if (msgs.length === 0) {
+                container.innerHTML = "<p style='text-align: center; color: var(--text-dim); margin-top: 50px;'>No messages yet. Say hello!</p>";
             } else {
                 container.innerHTML = msgs.map(m => `
-                    <div class="msg ${m.sender_id === userId ? 'sent' : 'received'}">
-                        ${escapeHtml(m.content)}
-                        <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                    <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
+                        ${m.content}
+                        <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                     </div>
                 `).join("");
                 container.scrollTop = container.scrollHeight;
             }
-        } catch (err) {
-            container.innerHTML = "<p style='color:#ff5555;'>Failed to load messages.</p>";
         }
-        lucide.createIcons();
-    };
 
-    window.showChatList = () => {
-        currentChatId = null;
-        document.getElementById("chat-list-view").style.display = "block";
-        document.getElementById("chat-messages-view").style.display = "none";
-        loadChatList();
-    };
-
-    async function sendMessage() {
-        const input = document.getElementById("chat-input");
-        const content = input.value.trim();
-        if (!content || !currentChatId) return;
-        try {
-            await apiFetch("/api/mentor/message", {
-                method: "POST",
-                body: JSON.stringify({ content, receiver_id: currentChatId })
+        async function sendMessage() {
+            const input = document.getElementById("chat-input");
+            const content = input.value.trim();
+            if (!content) return;
+            
+            input.disabled = true;
+            const res = await api("/api/mentor/message", { 
+                method: "POST", 
+                body: JSON.stringify({ content, receiver_id: currentChatId }) 
             });
-            input.value = "";
-            // Refresh messages
-            await window.openChat(currentChatId, document.getElementById("chat-title").innerText);
-        } catch (err) {
-            alert("Error sending message: " + err.message);
+            input.disabled = false;
+            if (res.success) {
+                input.value = "";
+                loadMessages();
+                haptic.impact('light');
+            } else {
+                tg.showAlert(res.error || "Failed to send message.");
+            }
         }
-    }
 
-    // Helper to escape HTML
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-
-    window.joinSession = async (id) => {
-        const data = await apiFetch(`/api/sessions/${id}/join`);
-        tg.openLink(data.jitsi_url);
-    };
-
-    window.startPrivateVideoCall = () => {
-        if (currentChatId) {
-            tg.openLink(`https://meet.jit.si/recovery-${userId.slice(-4)}-${currentChatId.slice(-4)}`);
+        async function startPrivateVideoCall() {
+            const roomName = `crc-call-${user.user_id.slice(-4)}-${currentChatId ? currentChatId.slice(-4) : 'mentor'}`;
+            const jitsiUrl = `https://meet.jit.si/${roomName}`;
+            
+            // Notify other party
+            await api("/api/mentor/message", { 
+                method: "POST", 
+                body: JSON.stringify({ content: `🎬 I am starting a private video call. Join here: ${jitsiUrl}`, receiver_id: currentChatId }) 
+            });
+            
+            tg.openLink(jitsiUrl);
         }
-    };
 
-    // Page switching
-    window.switchPage = async (page) => {
-        document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-        document.getElementById(`${page}-page`).classList.add("active");
-        document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-        document.querySelector(`.nav-item[data-page="${page}"]`).classList.add("active");
-        if (page === "dashboard") await loadDashboardContent();
-        if (page === "chat") await loadChatList();
-        if (page === "mentor-requests") await loadMentorRequests();
-        tg.HapticFeedback.impactOccurred('light');
-    };
-
-    // Event listeners
-    document.getElementById("submit-registration").onclick = async () => {
-        const sex = document.getElementById("reg-sex").value;
-        const age = document.getElementById("reg-age").value;
-        const edu = document.getElementById("reg-education").value;
-        const addiction = document.getElementById("reg-addiction-year").value;
-        const longest = document.getElementById("reg-longest-streak").value;
-        if (!sex || !age || !edu || !addiction || !longest) {
-            alert("Please fill all fields");
-            return;
+        async function createSession() {
+            const title = document.getElementById("new-session-title").value;
+            const desc = document.getElementById("new-session-desc").value;
+            const time = document.getElementById("new-session-time").value;
+            
+            if (!title || !time) return tg.showAlert("Please provide a title and time.");
+            
+            const res = await api("/api/sessions", { method: "POST", body: JSON.stringify({ title, description: desc, scheduled_time: time }) });
+            if (res.success) {
+                haptic.notify('success');
+                tg.showAlert("Live session scheduled!");
+                document.getElementById("new-session-title").value = "";
+                document.getElementById("new-session-desc").value = "";
+                document.getElementById("new-session-time").value = "";
+                loadDashboard();
+            }
         }
-        await apiFetch("/api/profile/complete", {
-            method: "POST",
-            body: JSON.stringify({ sex, age, educational_level: edu, addiction_year: addiction, longest_streak: parseInt(longest) })
-        });
-        profileComplete = true;
-        document.getElementById("registration-modal").style.display = "none";
-        await loadDashboardContent();
-    };
 
-    document.getElementById("checkin-btn").onclick = async () => {
-        await apiFetch("/api/checkin", { method: "POST", body: JSON.stringify({ status: "yes" }) });
-        alert("Checked in! Your streak has been updated.");
-        await loadDashboardContent();
-    };
+        async function deleteSession(id) {
+            if (!confirm("Are you sure you want to delete this session?")) return;
+            await api(`/api/sessions/${id}`, { method: "DELETE" });
+            loadDashboard();
+        }
 
-    document.getElementById("save-reflection").onclick = async () => {
-        const verseText = document.getElementById("verse-text").innerText;
-        const reflection = document.getElementById("reflection-text").value;
-        if (!reflection) return alert("Please write something.");
-        await apiFetch("/api/reflection", { method: "POST", body: JSON.stringify({ verse_text: verseText, reflection_text: reflection }) });
-        alert("Reflection saved!");
-        document.getElementById("reflection-text").value = "";
-    };
+        async function joinSession(id) {
+            const data = await api(`/api/sessions/${id}/join`);
+            if (data && data.jitsi_url) {
+                tg.openLink(data.jitsi_url);
+            }
+        }
 
-    document.getElementById("send-message").onclick = sendMessage;
+        async function saveProfile() {
+            const name = document.getElementById("profile-name").value;
+            const bio = document.getElementById("profile-bio").value;
+            const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ name, bio }) });
+            if (res.success) {
+                haptic.notify('success');
+                tg.showAlert("Profile updated!");
+                user.name = name;
+                user.bio = bio;
+                document.getElementById("profile-display-name").innerText = name;
+                document.getElementById("user-name").innerText = name;
+            }
+        }
 
-    document.getElementById("save-profile").onclick = async () => {
-        const name = document.getElementById("profile-name").value;
-        const bio = document.getElementById("profile-bio").value;
-        await apiFetch("/api/user/update", { method: "POST", body: JSON.stringify({ name, bio }) });
-        alert("Profile updated!");
-        await loadDashboardContent();
-    };
-
-    document.querySelectorAll(".nav-item").forEach(item => {
-        item.addEventListener("click", () => window.switchPage(item.dataset.page));
-    });
-
-    // Initial load
-    lucide.createIcons();
-    loadUserAndProfile();
-</script>
+        init();
+    </script>
 </body>
 </html>
