@@ -119,7 +119,12 @@
             const tbody = document.getElementById("user-rows");
             tbody.innerHTML = users.map(u => `
                 <tr>
-                    <td>${u.name}<br><small style="color:var(--text-dim)">${u.id}</small></td>
+                    <td>
+                        <strong>${u.real_name || 'No Name'}</strong><br>
+                        <small style="color:var(--accent)">@${u.name}</small><br>
+                        <small style="color:var(--text-dim)">ID: ${u.id}</small>
+                    </td>
+
                     <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : (u.role === 'mentor' ? 'badge-mentor' : 'badge-user')}">${u.role}</span></td>
                     <td>
                         <button class="btn" onclick="setRole('${u.id}', 'mentor')">Mentor</button>
@@ -134,13 +139,24 @@
             const list = document.getElementById("user-profiles-list");
             list.innerHTML = users.map(u => `
                 <div class="glass-card" style="background:rgba(255,255,255,0.01); margin-bottom:10px; cursor:pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-                    <strong>${u.name}</strong> <small>(${u.role})</small>
+                    <strong>${u.real_name || u.name}</strong> <small style="color:var(--accent)">(${u.role})</small>
                 </div>
                 <div style="display:none; padding:15px; font-size:13px; color:var(--text-dim);">
-                    <p>Sex: ${u.sex || 'N/A'} | Age: ${u.age || 'N/A'}</p>
-                    <p>Education: ${u.education || 'N/A'}</p>
-                    ${u.role === 'mentor' ? `<p>Real Name: ${u.real_name}</p><p>Testimony: ${u.testimony}</p>` : ''}
+                    <p><strong>Anonymous Name:</strong> ${u.name}</p>
+                    <p><strong>Real Name:</strong> ${u.real_name || 'N/A'}</p>
+                    <p><strong>Sex:</strong> ${u.sex || 'N/A'} | <strong>Age:</strong> ${u.age || 'N/A'}</p>
+                    <p><strong>Education:</strong> ${u.education || 'N/A'}</p>
+                    <p><strong>Addiction Started:</strong> ${u.addiction || 'N/A'}</p>
+                    <p><strong>Best Streak:</strong> ${u.streak || 0} days</p>
+                    ${u.role === 'mentor' ? `
+                        <hr style="margin:10px 0; border:0; border-top:1px solid rgba(255,255,255,0.1);">
+                        <p><strong>Work:</strong> ${u.work_status || 'N/A'}</p>
+                        <p><strong>Exp:</strong> ${u.mentor_years || 0} years</p>
+                        <p><strong>Training:</strong> ${u.training || 'N/A'}</p>
+                        <p><strong>Testimony:</strong> ${u.testimony || 'N/A'}</p>
+                    ` : ''}
                 </div>
+
             `).join("");
         }
 
