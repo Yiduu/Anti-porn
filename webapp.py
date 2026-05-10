@@ -31,9 +31,11 @@ def add_header(response):
         response.headers['Expires'] = '0'
     return response
 
-@app.route("/ping")
+@app.route("/ping", methods=['GET', 'HEAD'])
 def ping():
-    return jsonify({"status": "ok"})
+    """Simple health check for UptimeRobot (supports both HEAD and GET)."""
+    return "OK", 200
+
 
 
 def get_db_connection():
@@ -259,13 +261,16 @@ def register_user_api():
     if str(request.user_id) == str(ADMIN_ID):
         return jsonify({"error": "Admin cannot register"}), 403
     data = request.json
+    real_name = data.get("real_name")
     db_execute("""
         UPDATE users SET 
+        real_name = %s, anonymous_name = COALESCE(NULLIF(anonymous_name, ''), %s),
         sex = %s, age = %s, educational_level = %s, addiction_year = %s, longest_free_streak = %s, 
         profile_complete = TRUE, recovery_role = 'user'
         WHERE user_id = %s::text
-    """, (data.get("sex"), data.get("age"), data.get("educational_level"), data.get("addiction_year"), data.get("longest_free_streak"), request.user_id))
+    """, (real_name, real_name, data.get("sex"), data.get("age"), data.get("educational_level"), data.get("addiction_year"), data.get("longest_free_streak"), request.user_id))
     return jsonify({"success": True})
+
 
 
 @app.route("/api/register/mentor", methods=["POST"])
@@ -274,17 +279,19 @@ def register_mentor_api():
     if str(request.user_id) == str(ADMIN_ID):
         return jsonify({"error": "Admin cannot register"}), 403
     data = request.json
+    real_name = data.get("real_name")
     # Explicitly set role to mentor, never admin
     db_execute("""
         UPDATE users SET 
-        real_name = %s, anonymous_name = %s, sex = %s, age = %s, educational_level = %s, 
+        real_name = %s, anonymous_name = COALESCE(NULLIF(%s, ''), anonymous_name), sex = %s, age = %s, educational_level = %s, 
         work_status = %s, mentorship_experience_years = %s, professional_training = %s, self_recovery_testimony = %s,
         profile_complete = TRUE, recovery_role = 'mentor'
         WHERE user_id = %s::text
-    """, (data.get("real_name"), data.get("anonymous_name"), data.get("sex"), data.get("age"), data.get("educational_level"), 
+    """, (real_name, data.get("anonymous_name") or real_name, data.get("sex"), data.get("age"), data.get("educational_level"), 
           data.get("work_status"), data.get("mentorship_experience_years"), data.get("professional_training"), data.get("self_recovery_testimony"),
           request.user_id))
     return jsonify({"success": True})
+
 
 
 
