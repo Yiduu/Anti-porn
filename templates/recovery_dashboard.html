@@ -279,6 +279,13 @@
             return res.json();
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+
         // Initialize App
         window.onload = async () => {
             tg.ready();
@@ -422,31 +429,50 @@
         }
 
         async function loadMessages(shouldScroll = false) {
-            const path = currentChatId ? `/api/mentor/messages?receiver_id=${currentChatId}` : "/api/mentor/messages";
+            if (!currentChatId) return;
+            const path = `/api/mentor/messages?receiver_id=${currentChatId}`;
             try {
                 const msgs = await api(path);
                 const container = document.getElementById("chat-messages");
+                if (!msgs || msgs.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-dim);">✨ No messages yet. Start the conversation!</div>';
+                    return;
+                }
                 const html = msgs.map(m => `
                     <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
-                        ${m.content}
+                        <div class="msg-text">${escapeHtml(m.content)}</div>
                         <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                     </div>
                 `).join("");
                 if (container.innerHTML !== html) {
-                    container.innerHTML = html || `<p style="text-align:center; color:var(--text-dim); margin-top:20px;">No messages yet. Start the conversation.</p>`;
+                    container.innerHTML = html;
                     if (shouldScroll) container.scrollTop = container.scrollHeight;
                 }
-
-            } catch (e) {}
+            } catch (e) {
+                console.error("Failed to load messages:", e);
+            }
         }
 
         async function sendMessage() {
             const input = document.getElementById("chat-input");
             const content = input.value.trim();
-            if (!content) return;
-            const res = await api("/api/mentor/message", { method: "POST", body: JSON.stringify({ content, receiver_id: currentChatId }) });
-            if (res.success) { input.value = ""; loadMessages(true); haptic.impact('light'); }
+            if (!content || !currentChatId) return;
+            
+            try {
+                const res = await api("/api/mentor/message", { 
+                    method: "POST", 
+                    body: JSON.stringify({ content, receiver_id: currentChatId }) 
+                });
+                if (res.success) { 
+                    input.value = ""; 
+                    await loadMessages(true); 
+                    haptic.impact('light'); 
+                }
+            } catch (err) {
+                tg.showAlert("Error sending message: " + err.message);
+            }
         }
+
 
         async function updateProfile() {
             const name = document.getElementById("profile-name").value;
@@ -566,36 +592,52 @@
             }
         }
 
-        function openMentorChat(menteeId, menteeName) {
-            currentChatId = menteeId;
-            // Switch view
+        window.openChat = async (otherUserId, otherName) => {
+            currentChatId = otherUserId;
+            document.getElementById("active-mentor-name").innerText = otherName;
+            document.getElementById("active-mentor-initial").innerText = otherName[0];
+            
+            // Hide list views
             document.getElementById("mentor-tools-view").style.display = "none";
+            document.getElementById("mentorship-status-view").style.display = "block";
+            document.getElementById("no-mentor-view").style.display = "none";
+            document.getElementById("pending-mentor-view").style.display = "none";
             const chatView = document.getElementById("active-chat-view");
             chatView.style.display = "block";
-            document.getElementById("active-mentor-name").innerText = menteeName;
-            document.getElementById("active-mentor-initial").innerText = menteeName[0];
             
-            // Add a back button
-            if (!document.getElementById("chat-back-btn")) {
-                const backBtn = document.createElement("button");
-                backBtn.id = "chat-back-btn";
-                backBtn.className = "btn-outline";
-                backBtn.style = "width:auto; padding:5px 12px; margin-bottom:10px; font-size:12px;";
-                backBtn.innerHTML = "← Back to Tools";
-                backBtn.onclick = () => {
-                    chatView.style.display = "none";
-                    document.getElementById("mentor-tools-view").style.display = "block";
-                    currentChatId = null;
-                    if (chatInterval) clearInterval(chatInterval);
-                    chatInterval = null;
-                };
-                chatView.prepend(backBtn);
+            // Add a back button for mentors
+            if (user.role === 'mentor' || user.role === 'admin') {
+                if (!document.getElementById("chat-back-btn")) {
+                    const backBtn = document.createElement("button");
+                    backBtn.id = "chat-back-btn";
+                    backBtn.className = "btn-outline";
+                    backBtn.style = "width:auto; padding:5px 12px; margin-bottom:10px; font-size:12px;";
+                    backBtn.innerHTML = "← Back to Tools";
+                    backBtn.onclick = () => {
+                        chatView.style.display = "none";
+                        document.getElementById("mentor-tools-view").style.display = "block";
+                        currentChatId = null;
+                        if (chatInterval) clearInterval(chatInterval);
+                        chatInterval = null;
+                    };
+                    chatView.prepend(backBtn);
+                }
             }
             
-            loadMessages(true);
+            // Show loader
+            const container = document.getElementById("chat-messages");
+            container.innerHTML = '<div style="text-align:center; padding:20px;"><p style="color:var(--accent);">Loading messages...</p></div>';
+            
+            await loadMessages(true);
             if (chatInterval) clearInterval(chatInterval);
             chatInterval = setInterval(() => loadMessages(false), 5000);
+            lucide.createIcons();
+        };
+
+        function openMentorChat(menteeId, menteeName) {
+            openChat(menteeId, menteeName);
         }
+
         
         // Initial session load
         setInterval(loadSessions, 30000);
