@@ -66,9 +66,9 @@ def generate_webapp_url(user_id: str) -> str:
     
     # If admin, go directly to recovery dashboard
     if str(user_id) == str(ADMIN_ID):
-        return f"{RENDER_URL}/recovery?token={token}&_nocache={nocache}"
+        return f"{RENDER_URL}/recovery?token={token}&_={nocache}"
     
-    return f"{RENDER_URL}/landing?token={token}&_nocache={nocache}"
+    return f"{RENDER_URL}/landing?token={token}&_={nocache}"
 
 
 
