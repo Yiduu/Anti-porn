@@ -24,10 +24,17 @@ logger = logging.getLogger(__name__)
 # -------------------- Database helpers --------------------
 @app.after_request
 def add_header(response):
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '-1'
+    # Prevent caching of HTML pages for fresh WebApp loads
+    if response.mimetype == 'text/html':
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
     return response
+
+@app.route("/ping")
+def ping():
+    return jsonify({"status": "ok"})
+
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
@@ -242,6 +249,7 @@ def register_user_api():
 @require_auth
 def register_mentor_api():
     data = request.json
+    # Explicitly set role to mentor, never admin
     db_execute("""
         UPDATE users SET 
         real_name = %s, anonymous_name = %s, sex = %s, age = %s, educational_level = %s, 
@@ -252,6 +260,7 @@ def register_mentor_api():
           data.get("work_status"), data.get("mentorship_experience_years"), data.get("professional_training"), data.get("self_recovery_testimony"),
           request.user_id))
     return jsonify({"success": True})
+
 
 
 
