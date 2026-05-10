@@ -433,9 +433,10 @@
                     </div>
                 `).join("");
                 if (container.innerHTML !== html) {
-                    container.innerHTML = html;
+                    container.innerHTML = html || `<p style="text-align:center; color:var(--text-dim); margin-top:20px;">No messages yet. Start the conversation.</p>`;
                     if (shouldScroll) container.scrollTop = container.scrollHeight;
                 }
+
             } catch (e) {}
         }
 
@@ -489,7 +490,10 @@
             }
             list.innerHTML = sessions.map(s => `
                 <div class="glass-card">
-                    <h3 style="color:var(--accent);">${s.title}</h3>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <h3 style="color:var(--accent);">${s.title}</h3>
+                        ${(user.role === 'admin' || s.host_id === user.user_id) ? `<button onclick="confirmDeleteSession(${s.id})" style="background:none; border:none; color:var(--text-dim); cursor:pointer;"><i data-lucide="trash-2" style="width:18px;"></i></button>` : ''}
+                    </div>
                     <p style="font-size:13px; margin:10px 0;">${s.description || 'No description'}</p>
                     <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-dim);">
                         <span>📅 ${new Date(s.time).toLocaleString()}</span>
@@ -497,7 +501,19 @@
                     </div>
                 </div>
             `).join("");
+            lucide.createIcons();
         }
+
+        async function confirmDeleteSession(id) {
+            if (confirm("Are you sure you want to delete this session?")) {
+                const res = await api(`/api/sessions/${id}`, { method: "DELETE" });
+                if (res.success) {
+                    tg.showAlert("Session deleted.");
+                    loadSessions();
+                }
+            }
+        }
+
 
         async function joinSession(id) {
             const res = await api(`/api/sessions/${id}/join`);
