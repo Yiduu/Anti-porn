@@ -116,6 +116,17 @@
         .msg.sent { align-self: flex-end; background: var(--gold-gradient); color: #000; border-bottom-right-radius: 4px; }
         .msg.received { align-self: flex-start; background: rgba(255,255,255,0.1); border-bottom-left-radius: 4px; }
         .msg-info { font-size: 10px; opacity: 0.7; margin-top: 4px; }
+
+        /* Dropdowns Visibility Fix */
+        select, input, textarea {
+            background: #1e1e2f !important;
+            color: white !important;
+            border: 1px solid #444 !important;
+        }
+        option {
+            background: #2a2a3a !important;
+            color: white !important;
+        }
     </style>
 </head>
 <body>
@@ -162,57 +173,48 @@
 
         <!-- Mentorship Page -->
         <div id="mentorship-page" class="page">
-            <h2 style="margin-bottom: 20px;">Support Sanctuary</h2>
+            <h2 style="margin-bottom: 20px;">Sanctuary Support</h2>
             
-            <!-- User: Find Mentor -->
-            <div id="mentorship-status-view" style="display: none;">
-                <div id="no-mentor-view">
+            <!-- Unified Chat List View -->
+            <div id="chat-list-view">
+                <div id="mentee-list">
+                    <div class="loader-ring" style="width:30px; height:30px; margin:20px auto;"></div>
+                </div>
+                
+                <div id="no-mentor-view-internal" style="display: none; margin-top: 20px;">
                     <p style="color: var(--text-dim); margin-bottom: 20px;">You are not alone. Connect with a mentor for guidance.</p>
                     <div id="available-mentors-list"></div>
                 </div>
-                
-                <div id="pending-mentor-view" style="display: none;">
+
+                <div id="pending-mentor-view" style="display: none; margin-top: 20px;">
                     <div class="glass-card" style="text-align: center;">
                         <i data-lucide="clock" style="color: var(--accent); width: 40px; height: 40px; margin-bottom: 10px;"></i>
                         <p>Request sent to <strong id="pending-mentor-name">...</strong></p>
                         <p style="color: var(--text-dim); font-size: 13px; margin-top: 5px;">You'll be notified when they accept.</p>
                     </div>
                 </div>
+            </div>
 
-                <div id="active-chat-view" style="display: none;">
-                    <div class="header">
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div class="avatar" id="active-mentor-initial">M</div>
-                            <h3 id="active-mentor-name">Mentor</h3>
-                        </div>
-                        <button class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%;" onclick="startPrivateVideoCall()"><i data-lucide="video" style="color: var(--accent);"></i></button>
+            <!-- Unified Chat Messages View -->
+            <div id="chat-messages-view" style="display: none;">
+                <div class="header">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="avatar" id="chat-avatar">M</div>
+                        <h3 id="chat-title">Mentor</h3>
                     </div>
-                    <div class="glass-card" style="padding: 10px;">
-                        <div id="chat-messages" class="chat-container"></div>
-                        <div style="display: flex; gap: 10px; align-items: flex-end; padding: 10px;">
-                            <textarea id="chat-input" placeholder="Type a message..." style="margin-bottom: 0; min-height: 50px; border-radius: 20px;"></textarea>
-                            <button class="btn-primary" onclick="sendMessage()" style="width: 50px; height: 50px; border-radius: 25px; padding: 0; flex-shrink: 0;"><i data-lucide="send" style="color:#000;"></i></button>
-                        </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="video-call-btn" class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%; display:none;" onclick="startPrivateVideoCall()"><i data-lucide="video" style="color: var(--accent);"></i></button>
+                        <button class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%;" onclick="closeChat()"><i data-lucide="x" style="color: var(--text-dim);"></i></button>
+                    </div>
+                </div>
+                <div class="glass-card" style="padding: 10px;">
+                    <div id="chat-messages" class="chat-container"></div>
+                    <div style="display: flex; gap: 10px; align-items: flex-end; padding: 10px;">
+                        <textarea id="chat-input" placeholder="Type a message..." style="margin-bottom: 0; min-height: 50px; border-radius: 20px;"></textarea>
+                        <button id="send-message-btn" class="btn-primary" onclick="sendMessage()" style="width: 50px; height: 50px; border-radius: 25px; padding: 0; flex-shrink: 0;"><i data-lucide="send" style="color:#000;"></i></button>
                     </div>
                 </div>
             </div>
-
-            <!-- Mentor: Tools -->
-            <div id="mentor-tools-view" style="display: none;">
-                <div class="glass-card">
-                    <h3>Mentorship Requests</h3>
-                    <div id="pending-requests-list" style="margin-top: 15px;">
-                        <p style="color: var(--text-dim); font-size: 13px;">No pending requests.</p>
-                    </div>
-                </div>
-                <div class="glass-card">
-                    <h3>Active Mentees</h3>
-                    <div id="mentees-list" style="margin-top: 15px;">
-                        <p style="color: var(--text-dim); font-size: 13px;">No active mentees.</p>
-                    </div>
-                </div>
-            </div>
-
         </div>
 
         <!-- Community Page -->
@@ -259,22 +261,12 @@
         let currentChatId = null;
         let chatInterval = null;
 
-        // Safe haptic feedback
         function safeHaptic(type = 'light') {
             if (window.Telegram?.WebApp?.HapticFeedback?.impactOccurred) {
-                try {
-                    window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-                } catch(e) { console.log('Haptic not supported'); }
-            } else if (window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred) {
-                 try {
-                    if (type === 'success') window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-                    else window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-                } catch(e) {}
+                try { window.Telegram.WebApp.HapticFeedback.impactOccurred(type); } catch(e) {}
             }
         }
 
-
-        // Mobile Fixes & Retry Logic
         async function retryWithBackoff(fn, retries = 3, delay = 1000) {
             try { return await fn(); }
             catch (err) {
@@ -295,25 +287,12 @@
 
         function escapeHtml(str) {
             if (!str) return '';
-            return str.replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
+            return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
         }
 
-
-
-        // Initialize App
         window.onload = async () => {
-            tg.ready();
-            tg.expand();
-            tg.disableVerticalSwipes();
-            lucide.createIcons();
-
+            tg.ready(); tg.expand(); tg.disableVerticalSwipes(); lucide.createIcons();
             try {
-                // Wait for server wakeup
                 await retryWithBackoff(() => fetch('/ping').then(r => r.json()));
                 await init();
                 setTimeout(() => {
@@ -321,27 +300,16 @@
                     setTimeout(() => document.getElementById("splash-screen").style.display = "none", 500);
                 }, 800);
             } catch (e) {
-                document.querySelector(".splash-text").innerHTML = "SANCTUARY UNAVAILABLE<br><button onclick='location.reload()' style='margin-top:20px; background:var(--accent); border:none; padding:10px 20px; border-radius:10px;'>RETRY</button>";
-                document.querySelector(".loader-ring").style.display = "none";
+                document.querySelector(".splash-text").innerHTML = "CONNECTION ERROR<br><button onclick='location.reload()'>RETRY</button>";
             }
         };
 
         async function init() {
-            try {
-                user = await api("/api/user/me");
-            } catch (e) {
-                console.error("Failed to fetch user", e);
-                return;
-            }
+            try { user = await api("/api/user/me"); } catch (e) { return; }
             if (!user) return;
-
-            // Frontend fallback for incomplete profile
             if (!user.profile_complete && user.role !== 'admin') {
-                window.location.href = "/landing?token=" + token;
-                return;
+                window.location.href = "/landing?token=" + token; return;
             }
-
-
             document.getElementById("user-name").innerText = user.name || "Warrior";
             document.getElementById("user-avatar").innerText = (user.name || "W")[0];
             document.getElementById("profile-display-name").innerText = user.name || "Warrior";
@@ -350,20 +318,9 @@
             document.getElementById("role-badge").innerText = user.role.toUpperCase();
             document.getElementById("profile-name").value = user.name || "";
             document.getElementById("profile-bio").value = user.bio || "";
-
             if (user.role === 'admin') document.getElementById("admin-link").style.display = "block";
-            if (user.role === 'mentor' || user.role === 'admin') {
-                document.getElementById("mentor-create-session").style.display = "block";
-                document.getElementById("mentor-tools-view").style.display = "block";
-                loadMentorTools();
-            } else {
-                document.getElementById("mentorship-status-view").style.display = "block";
-                loadChatList(); // Using unified chat list loader
-            }
-
-
-
-            loadDashboard();
+            if (user.role === 'mentor' || user.role === 'admin') document.getElementById("mentor-create-session").style.display = "block";
+            loadChatList(); loadDashboard(); loadSessions();
         }
 
         function showPage(pageId, navItem) {
@@ -374,7 +331,6 @@
             safeHaptic('light');
         }
 
-
         async function loadDashboard() {
             const verse = await api("/api/daily-verse");
             if (verse) {
@@ -384,377 +340,156 @@
         }
 
         async function checkin(status) {
-            safeHaptic('heavy');
             const res = await api("/api/checkin", { method: "POST", body: JSON.stringify({ status }) });
-
             if (res.streak !== undefined) {
                 document.getElementById("streak").innerText = res.streak;
-                tg.showAlert(status === 'yes' ? "Glory to God! Another day of purity." : "Stay strong. Tomorrow is a new beginning.");
+                tg.showAlert(status === 'yes' ? "Praise God! Streak maintained." : "Tomorrow is a new day. Stay strong.");
+                safeHaptic('heavy');
             }
         }
 
         async function saveReflection() {
             const input = document.getElementById("reflection-input");
-            const text = input.value.trim();
-            if (!text) return;
-            const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ reflection_text: text }) });
-            if (res.success) {
-                tg.showAlert("Reflection saved.");
-                input.value = "";
-                safeHaptic('success');
-            }
-
+            if (!input.value.trim()) return;
+            const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ reflection_text: input.value }) });
+            if (res.success) { tg.showAlert("Reflection saved."); input.value = ""; safeHaptic('success'); }
         }
 
         async function loadChatList() {
-            const listDiv = user.role === 'mentor' || user.role === 'admin' 
-                ? document.getElementById("mentees-list") 
-                : document.getElementById("no-mentor-view"); // Fallback for user view
-            
-            // For mentees, we actually want to show their status/mentor
-            const statusView = document.getElementById("mentorship-status-view");
-            const noView = document.getElementById("no-mentor-view");
-            const pendingView = document.getElementById("pending-mentor-view");
-            const activeView = document.getElementById("active-chat-view");
-
-            if (user.role === 'user') {
-                const mentorship = await api("/api/user/active-mentorship");
-                noView.style.display = "none";
-                pendingView.style.display = "none";
-                activeView.style.display = "none";
-
-                if (!mentorship || !mentorship.status) {
-                    noView.style.display = "block";
-                    loadAvailableMentors();
-                } else if (mentorship.status === 'pending') {
-                    pendingView.style.display = "block";
-                    document.getElementById("pending-mentor-name").innerText = mentorship.mentor_name;
-                } else if (mentorship.has_mentor) {
-                    // Show a card to open chat
-                    noView.style.display = "block"; // Reuse this container to show the mentor card
-                    noView.innerHTML = `
-                        <div class="glass-card" style="display:flex; align-items:center; gap:15px; padding:15px; cursor:pointer;" onclick="openChat('${mentorship.mentor_id}', '${mentorship.mentor_name}')">
-                            <div class="avatar">${mentorship.mentor_name[0]}</div>
-                            <div style="flex:1;">
-                                <h4 style="font-size:16px;">${mentorship.mentor_name}</h4>
-                                <p style="color:var(--text-dim); font-size:12px;">Your Active Mentor</p>
-                            </div>
-                            <i data-lucide="chevron-right" style="color:var(--text-dim); width:16px;"></i>
-                        </div>
-                    `;
-                    lucide.createIcons();
-                }
-            } else {
-                // Mentor/Admin logic (loads mentees)
-                const mentees = await api("/api/mentees");
-                const mList = document.getElementById("mentees-list");
-                if (mentees.length) {
-                    mList.innerHTML = mentees.map(m => `
-                        <div class="glass-card" style="display:flex; align-items:center; gap:12px; padding:15px; cursor:pointer;" onclick="openChat('${m.id}', '${m.name}')">
+            const listDiv = document.getElementById("mentee-list");
+            listDiv.innerHTML = '<div class="loader-ring" style="width:30px; height:30px; margin:20px auto;"></div>';
+            try {
+                if (user.role === 'mentor' || user.role === 'admin') {
+                    const mentees = await api("/api/mentees");
+                    const requests = await api("/api/mentorship/requests");
+                    let html = "";
+                    if (requests.length) {
+                        html += `<div class="glass-card"><h3>Requests</h3>` + requests.map(r => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding:10px; background:rgba(255,255,255,0.05); border-radius:12px;">
+                                <div><b>${escapeHtml(r.name)}</b><br><span style="font-size:11px;">Streak: ${r.streak}</span></div>
+                                <div style="display:flex; gap:5px;">
+                                    <button class="btn-primary" style="width:auto; padding:5px 12px; font-size:11px;" onclick="respondMentorship(${r.id}, 'accept')">Accept</button>
+                                    <button class="btn-outline" style="width:auto; padding:5px 12px; font-size:11px;" onclick="respondMentorship(${r.id}, 'reject')">Reject</button>
+                                </div>
+                            </div>`).join("") + `</div>`;
+                    }
+                    html += `<div class="glass-card"><h3>Active Mentees</h3>` + (mentees.length ? mentees.map(m => `
+                        <div class="glass-card" style="display:flex; align-items:center; gap:12px; padding:15px; cursor:pointer; margin-top:10px; background:rgba(255,255,255,0.05);" onclick="openChat('${m.id}', '${escapeHtml(m.name)}')">
                             <div class="avatar">${m.name[0]}</div>
-                            <div style="flex:1;">
-                                <p><strong>${m.name}</strong></p>
-                                <p style="font-size:11px; color:var(--text-dim);">${m.streak} day purity streak</p>
-                            </div>
-                            <i data-lucide="chevron-right" style="color:var(--text-dim); width:16px;"></i>
-                        </div>
-                    `).join("");
+                            <div style="flex:1;"><b>${escapeHtml(m.name)}</b><br><span style="font-size:11px;">Streak: ${m.streak} days</span></div>
+                            <i data-lucide="chevron-right"></i>
+                        </div>`).join("") : "<p style='color:var(--text-dim); padding:10px;'>No active mentees.</p>") + `</div>`;
+                    listDiv.innerHTML = html;
                 } else {
-                    mList.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">No active mentees.</p>`;
+                    const mInfo = await api("/api/user/active-mentorship");
+                    document.getElementById("no-mentor-view-internal").style.display = "none";
+                    document.getElementById("pending-mentor-view").style.display = "none";
+                    if (mInfo.status === 'pending') {
+                        document.getElementById("pending-mentor-view").style.display = "block";
+                        document.getElementById("pending-mentor-name").innerText = mInfo.mentor_name;
+                        listDiv.innerHTML = "";
+                    } else if (mInfo.has_mentor) {
+                        listDiv.innerHTML = `<div class="glass-card" style="display:flex; align-items:center; gap:15px; padding:20px; cursor:pointer;" onclick="openChat('${mInfo.mentor_id}', '${escapeHtml(mInfo.mentor_name)}')">
+                            <div class="avatar">${mInfo.mentor_name[0]}</div>
+                            <div style="flex:1;"><h4>${escapeHtml(mInfo.mentor_name)}</h4><p style="color:var(--text-dim); font-size:13px;">Active Mentor</p></div>
+                            <i data-lucide="chevron-right"></i></div>`;
+                    } else {
+                        document.getElementById("no-mentor-view-internal").style.display = "block";
+                        loadAvailableMentors(); listDiv.innerHTML = "";
+                    }
                 }
                 lucide.createIcons();
-            }
+            } catch (e) { listDiv.innerHTML = "<p>Error loading chats.</p>"; }
         }
-
-        async function loadMentorshipTab() {
-            loadChatList();
-        }
-
 
         async function loadAvailableMentors() {
             const mentors = await api("/api/mentors");
-            const list = document.getElementById("available-mentors-list");
-            list.innerHTML = mentors.map(m => `
-                <div class="glass-card" style="display:flex; align-items:center; gap:15px; padding:15px;">
-                    <div class="avatar">${m.name[0]}</div>
-                    <div style="flex:1;">
-                        <h4 style="font-size:16px;">${m.name}</h4>
-                        <p style="color:var(--text-dim); font-size:12px;">${m.bio || 'Recovery Mentor'}</p>
-                    </div>
-                    <button class="btn-primary" style="width:auto; padding:8px 16px; font-size:12px;" onclick="requestMentor('${m.id}')">Request</button>
-                </div>
-            `).join("");
+            document.getElementById("available-mentors-list").innerHTML = mentors.map(m => `
+                <div class="glass-card" style="margin-top:10px;">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;"><div class="avatar">${m.name[0]}</div><b>${escapeHtml(m.name)}</b></div>
+                    <p style="font-size:13px; color:var(--text-dim); margin-bottom:15px;">${escapeHtml(m.bio || "No bio")}</p>
+                    <button class="btn-primary" onclick="requestMentor('${m.id}')">Request Mentorship</button>
+                </div>`).join("");
         }
 
-        async function requestMentor(mentorId) {
-            const res = await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: mentorId }) });
-            if (res.success) { loadMentorshipTab(); safeHaptic('success'); }
+        async function requestMentor(id) { await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: id }) }); loadChatList(); safeHaptic('success'); }
+        async function respondMentorship(id, action) { await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: id, action }) }); loadChatList(); safeHaptic('success'); }
+
+        window.openChat = async (id, name) => {
+            currentChatId = id;
+            document.getElementById("chat-title").innerText = name;
+            document.getElementById("chat-avatar").innerText = name[0];
+            document.getElementById("chat-list-view").style.display = "none";
+            document.getElementById("chat-messages-view").style.display = "block";
+            document.getElementById("video-call-btn").style.display = "block";
+            await loadMessages(true);
+            if (chatInterval) clearInterval(chatInterval);
+            chatInterval = setInterval(() => loadMessages(false), 5000);
+            safeHaptic('light');
+        };
+
+        function closeChat() {
+            document.getElementById("chat-messages-view").style.display = "none";
+            document.getElementById("chat-list-view").style.display = "block";
+            currentChatId = null; if (chatInterval) clearInterval(chatInterval); chatInterval = null;
         }
 
-
-        async function loadMessages(shouldScroll = false) {
+        async function loadMessages(scroll) {
             if (!currentChatId) return;
-            const path = `/api/mentor/messages?receiver_id=${currentChatId}`;
-            try {
-                const msgs = await api(path);
-                const container = document.getElementById("chat-messages");
-                if (!msgs || msgs.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-dim);">✨ No messages yet. Start the conversation!</div>';
-                    return;
-                }
-                const html = msgs.map(m => `
-                    <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
-                        <div class="msg-text">${escapeHtml(m.content)}</div>
-                        <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                    </div>
-                `).join("");
-                if (container.innerHTML !== html) {
-                    container.innerHTML = html;
-                    if (shouldScroll) container.scrollTop = container.scrollHeight;
-                }
-            } catch (e) {
-                console.error("Failed to load messages:", e);
-            }
+            const msgs = await api(`/api/mentor/messages?receiver_id=${currentChatId}`);
+            const container = document.getElementById("chat-messages");
+            if (!msgs.length) { container.innerHTML = "<p style='text-align:center; padding:20px; color:var(--text-dim);'>No messages yet.</p>"; return; }
+            container.innerHTML = msgs.map(m => `
+                <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
+                    <div class="msg-text">${escapeHtml(m.content)}</div>
+                    <div class="msg-info">${escapeHtml(m.sender_name)} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>`).join("");
+            if (scroll) container.scrollTop = container.scrollHeight;
         }
 
         async function sendMessage() {
             const input = document.getElementById("chat-input");
-            const content = input.value.trim();
-            if (!content || !currentChatId) {
-                console.log("No content or no chat selected");
-                return;
-            }
-            
-            try {
-                const result = await api("/api/mentor/message", { 
-                    method: "POST", 
-                    body: JSON.stringify({ content, receiver_id: currentChatId }) 
-                });
-                if (result.success) { 
-                    input.value = ""; 
-                    await loadMessages(true); 
-                    safeHaptic('light'); 
-                } else {
-                    tg.showAlert(result.error || "Failed to send message");
-                }
-            } catch (err) {
-                console.error("Send message error:", err);
-                tg.showAlert("Error sending message: " + err.message);
-            }
+            if (!input.value.trim() || !currentChatId) return;
+            const res = await api("/api/mentor/message", { method: "POST", body: JSON.stringify({ content: input.value, receiver_id: currentChatId }) });
+            if (res.success) { input.value = ""; loadMessages(true); safeHaptic('light'); }
         }
 
-
-
-        async function updateProfile() {
-            const name = document.getElementById("profile-name").value;
-            const bio = document.getElementById("profile-bio").value;
-            await api("/api/user/update", { method: "POST", body: JSON.stringify({ anonymous_name: name, bio }) });
-            tg.showAlert("Profile updated.");
-            init();
-        }
-
-        // Mentor Tools & Sessions
-        function showCreateSession() {
-            const title = prompt("Session Title:");
-            const desc = prompt("Short Description:");
-            const time = prompt("Scheduled Time (YYYY-MM-DD HH:MM):", new Date(Date.now() + 3600000).toISOString().slice(0, 16).replace('T', ' '));
-            if (title && time) {
-                mentorCreateSession(title, desc, time);
-            }
-        }
-
-        async function mentorCreateSession(title, description, scheduled_time) {
-            try {
-                const res = await api("/api/sessions", {
-                    method: "POST",
-                    body: JSON.stringify({ title, description, scheduled_time })
-                });
-                if (res.success) {
-                    tg.showAlert("Live session scheduled!");
-                    loadSessions();
-                }
-            } catch (e) {
-                tg.showAlert("Failed to create session. Check date format (YYYY-MM-DD HH:MM).");
-            }
-        }
+        window.startPrivateVideoCall = () => {
+            const room = `recovery-${[user.user_id.slice(-6), currentChatId.slice(-6)].sort().join('-')}`;
+            tg.openLink(`https://meet.jit.si/${room}`); safeHaptic('heavy');
+        };
 
         async function loadSessions() {
             const sessions = await api("/api/sessions");
             const list = document.getElementById("live-sessions-list");
-            if (!sessions.length) {
-                list.innerHTML = `<p style="text-align:center; color:var(--text-dim); margin-top:20px;">No upcoming sessions.</p>`;
-                return;
-            }
+            if (!sessions.length) { list.innerHTML = "<p style='text-align:center; color:var(--text-dim); padding:40px;'>No sessions.</p>"; return; }
             list.innerHTML = sessions.map(s => `
                 <div class="glass-card">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                        <h3 style="color:var(--accent);">${s.title}</h3>
-                        ${(user.role === 'admin' || s.host_id === user.user_id) ? `<button onclick="confirmDeleteSession(${s.id})" style="background:none; border:none; color:var(--text-dim); cursor:pointer;"><i data-lucide="trash-2" style="width:18px;"></i></button>` : ''}
+                    <div style="display:flex; justify-content:space-between;">
+                        <div><h4 style="color:var(--accent);">${escapeHtml(s.title)}</h4><p style="font-size:12px; color:var(--text-dim);">📅 ${new Date(s.time).toLocaleString()}</p></div>
+                        ${(user.role === 'admin' || s.host_id === user.user_id) ? `<button class="btn-outline" style="width:auto; padding:5px;" onclick="deleteSession(${s.id})"><i data-lucide="trash-2" style="width:16px; color:#ff5555;"></i></button>` : ''}
                     </div>
-                    <p style="font-size:13px; margin:10px 0;">${s.description || 'No description'}</p>
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-dim);">
-                        <span>📅 ${new Date(s.time).toLocaleString()}</span>
-                        <button class="btn-primary" style="width:auto; padding:6px 15px;" onclick="joinSession(${s.id})">Join</button>
-                    </div>
-                </div>
-            `).join("");
+                    <p style="font-size:13px; margin:10px 0;">${escapeHtml(s.description || 'Live support session.')}</p>
+                    <button class="btn-primary" onclick="joinSession(${s.id})">Join Session</button>
+                </div>`).join("");
             lucide.createIcons();
         }
 
-        async function confirmDeleteSession(id) {
-            if (confirm("Are you sure you want to delete this session?")) {
-                const res = await api(`/api/sessions/${id}`, { method: "DELETE" });
-                if (res.success) {
-                    tg.showAlert("Session deleted.");
-                    loadSessions();
-                }
-            }
+        async function deleteSession(id) { if (confirm("Delete session?")) { await api(`/api/sessions/${id}`, { method: "DELETE" }); loadSessions(); safeHaptic('heavy'); } }
+        async function joinSession(id) { const res = await api(`/api/sessions/${id}/join`); if (res.jitsi_url) tg.openLink(res.jitsi_url); }
+        function showCreateSession() {
+            const title = prompt("Title:"), desc = prompt("Desc:"), time = prompt("Time (YYYY-MM-DD HH:MM):");
+            if (title && time) api("/api/sessions", { method: "POST", body: JSON.stringify({ title, description: desc, scheduled_time: time }) }).then(() => { loadSessions(); safeHaptic('success'); });
         }
 
-
-        async function joinSession(id) {
-            const res = await api(`/api/sessions/${id}/join`);
-            if (res.jitsi_url) tg.openLink(res.jitsi_url);
+        async function updateProfile() {
+            const name = document.getElementById("profile-name").value, bio = document.getElementById("profile-bio").value;
+            const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ anonymous_name: name, bio }) });
+            if (res.success) { tg.showAlert("Profile updated!"); init(); }
         }
 
-        async function loadMentorTools() {
-            // Load Pending Requests
-            const requests = await api("/api/mentorship/requests");
-            const reqList = document.getElementById("pending-requests-list");
-            if (requests.length) {
-                reqList.innerHTML = requests.map(r => `
-                    <div class="glass-card" style="padding:15px; margin-bottom:10px;">
-                        <p><strong>${r.name}</strong> (${r.streak} day streak)</p>
-                        <div style="display:flex; gap:10px; margin-top:10px;">
-                            <button class="btn-primary" style="padding:8px;" onclick="respondRequest(${r.id}, 'accept')">Accept</button>
-                            <button class="btn-outline" style="padding:8px;" onclick="respondRequest(${r.id}, 'reject')">Reject</button>
-                        </div>
-                    </div>
-                `).join("");
-            } else {
-                reqList.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">No pending requests.</p>`;
-            }
-
-            // Load Mentees
-            const mentees = await api("/api/mentees");
-            const mList = document.getElementById("mentees-list");
-            if (mentees.length) {
-                mList.innerHTML = mentees.map(m => `
-                    <div class="glass-card" style="display:flex; align-items:center; gap:12px; padding:15px; cursor:pointer;" onclick="openMentorChat('${m.id}', '${m.name}')">
-                        <div class="avatar">${m.name[0]}</div>
-                        <div style="flex:1;">
-                            <p><strong>${m.name}</strong></p>
-                            <p style="font-size:11px; color:var(--text-dim);">${m.streak} day purity streak</p>
-                        </div>
-                        <i data-lucide="chevron-right" style="color:var(--text-dim); width:16px;"></i>
-                    </div>
-                `).join("");
-                lucide.createIcons();
-            } else {
-                mList.innerHTML = `<p style="color:var(--text-dim); font-size:13px;">No active mentees.</p>`;
-            }
-        }
-
-        async function respondRequest(requestId, action) {
-            const res = await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: requestId, action }) });
-            if (res.success) {
-                tg.showAlert(`Request ${action}ed!`);
-                loadMentorTools();
-            }
-        }
-
-        window.openChat = async (otherUserId, otherName) => {
-            currentChatId = otherUserId;
-            document.getElementById("active-mentor-name").innerText = otherName;
-            document.getElementById("active-mentor-initial").innerText = otherName[0];
-            
-            // Layout management
-            if (user.role === 'user') {
-                document.getElementById("no-mentor-view").style.display = "none";
-            } else {
-                document.getElementById("mentor-tools-view").style.display = "none";
-            }
-            
-            const chatView = document.getElementById("active-chat-view");
-            chatView.style.display = "block";
-            
-            // Safe Haptic
-            safeHaptic('light');
-
-            const container = document.getElementById("chat-messages");
-            container.innerHTML = '<div style="text-align:center; padding:20px;"><div class="loader-ring" style="margin: 0 auto;"></div><p style="color:var(--accent); margin-top:10px;">Loading sanctuary messages...</p></div>';
-            
-            try {
-                const msgs = await api(`/api/mentor/messages?receiver_id=${currentChatId}`);
-                if (!msgs || msgs.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-dim);">✨ No messages yet. Send a message to start the conversation!</div>';
-                } else {
-                    container.innerHTML = msgs.map(m => `
-                        <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
-                            <div class="msg-text">${escapeHtml(m.content)}</div>
-                            <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                        </div>
-                    `).join("");
-                    container.scrollTop = container.scrollHeight;
-                }
-            } catch (err) {
-                console.error("Failed to load messages:", err);
-                container.innerHTML = '<div style="text-align:center; padding:40px; color:#ff5555;">❌ Failed to load messages. Please try again.</div>';
-            }
-
-            // Back button logic for BOTH mentor and mentee
-            if (!document.getElementById("chat-back-btn")) {
-                const backBtn = document.createElement("button");
-                backBtn.id = "chat-back-btn";
-                backBtn.className = "btn-outline";
-                backBtn.style = "width:auto; padding:5px 12px; margin-bottom:10px; font-size:12px;";
-                backBtn.innerHTML = "← Back to List";
-                backBtn.onclick = () => {
-                    chatView.style.display = "none";
-                    if (user.role === 'mentor' || user.role === 'admin') {
-                        document.getElementById("mentor-tools-view").style.display = "block";
-                    } else {
-                        loadChatList(); // Refresh user view
-                    }
-                    currentChatId = null;
-                    if (chatInterval) clearInterval(chatInterval);
-                    chatInterval = null;
-                    safeHaptic('light');
-                };
-                chatView.prepend(backBtn);
-            } else {
-                document.getElementById("chat-back-btn").style.display = "block";
-            }
-            
-            if (chatInterval) clearInterval(chatInterval);
-            chatInterval = setInterval(() => loadMessages(false), 5000);
-            lucide.createIcons();
-        };
-
-        function openMentorChat(menteeId, menteeName) {
-            openChat(menteeId, menteeName);
-        }
-
-
-        
-        // Initial session load
-        setInterval(loadSessions, 30000);
-        setTimeout(loadSessions, 2000);
-
-        // Event Listeners for Chat
-        document.addEventListener('DOMContentLoaded', () => {
-            const chatInput = document.getElementById("chat-input");
-            if (chatInput) {
-                chatInput.addEventListener("keypress", (e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                });
-            }
-        });
+        setInterval(loadSessions, 60000);
+        document.addEventListener('keypress', e => { if (e.key === "Enter" && !e.shiftKey && document.activeElement.id === "chat-input") { e.preventDefault(); sendMessage(); } });
     </script>
-
-
 </body>
 </html>
