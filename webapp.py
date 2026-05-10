@@ -422,32 +422,35 @@ def send_message():
     receiver_id = data.get("receiver_id")
     content = data.get("content")
     
-    try:
-        if receiver_id:
-            mentorship = db_fetch_one("SELECT id FROM recovery_mentorships WHERE ((user_id = %s::text AND mentor_id = %s::text) OR (user_id = %s::text AND mentor_id = %s::text)) AND status = 'active'", (request.user_id, receiver_id, receiver_id, request.user_id))
-        else:
-            mentorship = db_fetch_one("SELECT id, CASE WHEN user_id = %s::text THEN mentor_id ELSE user_id END FROM recovery_mentorships WHERE (user_id = %s::text OR mentor_id = %s::text) AND status = 'active'", (request.user_id, request.user_id, request.user_id))
-        
-        if not mentorship:
-            return jsonify({"error": "No active mentorship found."}), 400
-            
-        mentorship_id = mentorship[0]
-        final_receiver_id = receiver_id if receiver_id else mentorship[1]
-        
-        db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES (%s, %s::text, %s::text, %s)",
-                (mentorship_id, request.user_id, final_receiver_id, content))
-        
-        # Notify
-        user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::text", (final_receiver_id,))
-        if user_row and user_row[1]:
-            sender_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
-            sender_name = sender_row[0] if sender_row else "Someone"
-            send_telegram_notification(final_receiver_id, f"📩 New message from {sender_name} in Recovery App.")
-        
-        return jsonify({"success": True})
-    except Exception as e:
-        logger.error(f"Chat error: {e}")
-        return jsonify({"error": str(e)}), 500
+    if not content or not receiver_id:
+        return jsonify({"error": "Missing content or receiver"}), 400
+    
+    # Find active mentorship
+    mentorship = db_fetch_one("""
+        SELECT id FROM recovery_mentorships
+        WHERE status = 'active'
+        AND ((user_id = %s::text AND mentor_id = %s::text)
+          OR (user_id = %s::text AND mentor_id = %s::text))
+    """, (request.user_id, receiver_id, receiver_id, request.user_id))
+    
+    if not mentorship:
+        return jsonify({"error": "No active mentorship found"}), 400
+    
+    mentorship_id = mentorship[0]
+    db_execute("""
+        INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content)
+        VALUES (%s, %s::text, %s::text, %s)
+    """, (mentorship_id, request.user_id, receiver_id, content))
+    
+    # Notify receiver (if they have notifications on)
+    user_row = db_fetch_one("SELECT anonymous_name, recovery_notifications FROM users WHERE user_id = %s::text", (receiver_id,))
+    if user_row and user_row[1]:
+        sender_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
+        sender_name = sender_row[0] if sender_row else "Someone"
+        send_telegram_notification(receiver_id, f"📩 New message from {sender_name} in Recovery App.")
+    
+    return jsonify({"success": True})
+
 
 @app.route("/api/mentors", methods=["GET"])
 @require_auth
