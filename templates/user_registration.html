@@ -78,11 +78,16 @@
         <p class="subtitle">Personalize your recovery sanctuary.</p>
         
         <div class="form-card">
+            <label>ሙሉ ስም (Full Name)</label>
+            <input type="text" id="real_name" placeholder="ለምሳሌ: አበበ በቀለ / Example: Abebe Bekele" required>
+            <p style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">ይህ ስም ለአማካሪዎ ብቻ ይታያል (Visible only to your mentor)</p>
+
             <label>Sex</label>
             <select id="sex">
                 <option value="male">Male</option>
                 <option value="female">Female</option>
             </select>
+
 
             <label>Current Age</label>
             <input type="number" id="age" placeholder="e.g. 25">
@@ -115,6 +120,7 @@
 
         async function submit() {
             const data = {
+                real_name: document.getElementById("real_name").value,
                 sex: document.getElementById("sex").value,
                 age: document.getElementById("age").value,
                 educational_level: document.getElementById("edu").value,
@@ -122,10 +128,12 @@
                 longest_free_streak: document.getElementById("streak").value
             };
 
-            if (!data.age || !data.educational_level) {
+
+            if (!data.real_name || !data.age || !data.educational_level) {
                 tg.showAlert("Please complete all fields to continue.");
                 return;
             }
+
 
             const btn = document.getElementById("submit-btn");
             btn.disabled = true;
