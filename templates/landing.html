@@ -2,79 +2,146 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CRC - Welcome</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover, height=device-height">
+    <title>CRC - Sanctuary</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         :root {
             --bg-dark: #0a0a0a;
+            --bg-gradient: radial-gradient(circle at 10% 20%, #1a1a2e, #0a0a0a);
             --accent: #FFD700;
+            --accent-dark: #B8860B;
+            --gold-gradient: linear-gradient(135deg, #FFD700 0%, #B8860B 100%);
             --text-main: #FFFFFF;
             --text-dim: #A0A0A0;
             --glass-bg: rgba(255, 255, 255, 0.03);
             --glass-border: rgba(255, 255, 255, 0.08);
+            --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body {
-            background-color: var(--bg-dark);
-            background-image: 
-                radial-gradient(circle at 10% 20%, rgba(255, 215, 0, 0.05) 0%, transparent 40%),
-                radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.05) 0%, transparent 40%);
+            background: var(--bg-gradient);
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
             min-height: 100vh;
-            display: flex; align-items: center; justify-content: center;
-            padding: 20px;
+            overflow-x: hidden;
+            display: flex; flex-direction: column;
         }
-        .container { max-width: 450px; width: 100%; text-align: center; }
-        h1 { font-family: 'Outfit', sans-serif; font-size: 32px; margin-bottom: 10px; }
-        p { color: var(--text-dim); margin-bottom: 40px; }
+
+        /* Splash Screen */
+        #splash-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-dark);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999; transition: opacity 0.5s ease;
+        }
+        .loader-ring {
+            width: 80px; height: 80px; border: 2px solid transparent;
+            border-top: 2px solid var(--accent); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .splash-text { font-family: 'Outfit', sans-serif; font-size: 18px; color: var(--accent); letter-spacing: 1px; }
+
+        .container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; max-width: 450px; margin: 0 auto; width: 100%; }
+        h1 { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 36px; margin-bottom: 12px; text-align: center; background: var(--gold-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p.subtitle { font-size: 16px; color: var(--text-dim); margin-bottom: 48px; text-align: center; font-weight: 300; }
+
         .role-card {
             background: var(--glass-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--glass-border);
-            border-radius: 24px;
-            padding: 30px;
+            border-radius: 28px;
+            padding: 32px;
             margin-bottom: 20px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             text-align: left;
-            display: flex; align-items: center; gap: 20px;
+            display: flex; align-items: center; gap: 24px;
+            width: 100%;
+            box-shadow: var(--card-shadow);
         }
-        .role-card:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.06); }
+        .role-card:active { transform: scale(0.97); background: rgba(255, 255, 255, 0.06); }
         .icon-box {
-            width: 60px; height: 60px; border-radius: 18px;
-            background: rgba(255, 215, 0, 0.1);
+            width: 64px; height: 64px; border-radius: 20px;
+            background: rgba(255, 215, 0, 0.08);
             display: flex; align-items: center; justify-content: center;
             color: var(--accent);
+            border: 1px solid rgba(255, 215, 0, 0.1);
         }
-        .role-info h3 { font-family: 'Outfit', sans-serif; font-size: 20px; margin-bottom: 4px; }
-        .role-info p { margin-bottom: 0; font-size: 14px; }
+        .role-info h3 { font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+        .role-info p { color: var(--text-dim); font-size: 14px; line-height: 1.4; }
+
+        .fade-in { animation: fadeIn 0.8s ease forwards; opacity: 0; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div id="splash-screen">
+        <div class="loader-ring"></div>
+        <div class="splash-text">LOADING YOUR SANCTUARY</div>
+    </div>
+
+    <div class="container fade-in">
+        <i data-lucide="cross" style="color: var(--accent); width: 48px; height: 48px; margin-bottom: 24px;"></i>
         <h1>Welcome, Warrior</h1>
-        <p>Choose your role to begin the journey of renewal.</p>
+        <p class="subtitle">Choose your path toward freedom and recovery.</p>
         
-        <div class="role-card" onclick="window.location.href='/register/user?token={{ token }}'">
-            <div class="icon-box"><i data-lucide="shield"></i></div>
+        <div class="role-card" onclick="navigateTo('/register/user')">
+            <div class="icon-box"><i data-lucide="shield-check" style="width: 28px; height: 28px;"></i></div>
             <div class="role-info">
                 <h3>Join as Seeker</h3>
-                <p>Start your recovery journey with accountability and daily check-ins.</p>
+                <p>Start your journey with daily check-ins, verses, and accountability.</p>
             </div>
         </div>
 
-        <div class="role-card" onclick="window.location.href='/register/mentor?token={{ token }}'">
-            <div class="icon-box"><i data-lucide="book-open"></i></div>
+        <div class="role-card" onclick="navigateTo('/register/mentor')">
+            <div class="icon-box"><i data-lucide="heart-handshake" style="width: 28px; height: 28px;"></i></div>
             <div class="role-info">
                 <h3>Join as Mentor</h3>
-                <p>Guide others, share your testimony, and lead live sessions.</p>
+                <p>Guide others through your testimony and professional experience.</p>
             </div>
         </div>
     </div>
-    <script>lucide.createIcons();</script>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const token = "{{ token }}";
+
+        async function retryWithBackoff(fn, retries = 3, delay = 1000) {
+            try { return await fn(); }
+            catch (err) {
+                if (retries <= 0) throw err;
+                await new Promise(r => setTimeout(r, delay));
+                return retryWithBackoff(fn, retries - 1, delay * 2);
+            }
+        }
+
+        function navigateTo(path) {
+            window.location.href = `${path}?token=${token}`;
+        }
+
+        window.onload = async () => {
+            tg.ready();
+            tg.expand();
+            tg.disableVerticalSwipes();
+            lucide.createIcons();
+
+            // Ping server before clearing splash
+            try {
+                await retryWithBackoff(() => fetch('/ping').then(r => { if(!r.ok) throw new Error(); return r.json(); }));
+                setTimeout(() => {
+                    document.getElementById("splash-screen").style.opacity = "0";
+                    setTimeout(() => document.getElementById("splash-screen").style.display = "none", 500);
+                }, 800);
+            } catch (e) {
+                document.querySelector(".splash-text").innerHTML = "CONNECTION FAILED<br><button onclick='location.reload()' style='margin-top:20px; background:var(--accent); border:none; padding:10px 20px; border-radius:10px;'>RETRY</button>";
+                document.querySelector(".loader-ring").style.display = "none";
+            }
+        };
+    </script>
 </body>
 </html>
