@@ -368,32 +368,32 @@ def get_messages():
     receiver_id = request.args.get("receiver_id")
     current_user_id = request.user_id
     
-    # Find the active mentorship between current user and the other user
-    if receiver_id:
-        # Case 1: current user is mentor, receiver is mentee (user_id)
-        # Case 2: current user is mentee, receiver is mentor
-        mentorship = db_fetch_one("""
-            SELECT id FROM recovery_mentorships
-            WHERE status = 'active'
-            AND (
-                (mentor_id = %s::text AND user_id = %s::text)
-                OR
-                (mentor_id = %s::text AND user_id = %s::text)
-            )
-        """, (current_user_id, receiver_id, receiver_id, current_user_id))
-    else:
-        # No receiver specified: get the active mentorship for the current user
+    if not receiver_id:
+        # No receiver specified: try to find the active mentorship for current user
         mentorship = db_fetch_one("""
             SELECT id FROM recovery_mentorships
             WHERE status = 'active'
             AND (user_id = %s::text OR mentor_id = %s::text)
             LIMIT 1
         """, (current_user_id, current_user_id))
+    else:
+        # Find mentorship between current_user and receiver (either direction)
+        mentorship = db_fetch_one("""
+            SELECT id FROM recovery_mentorships
+            WHERE status = 'active'
+            AND (
+                (user_id = %s::text AND mentor_id = %s::text)
+                OR
+                (user_id = %s::text AND mentor_id = %s::text)
+            )
+        """, (current_user_id, receiver_id, receiver_id, current_user_id))
     
     if not mentorship:
-        return jsonify([])  # No active mentorship
+        return jsonify([])  # No active mentorship found
     
     mentorship_id = mentorship[0]
+    
+    # Fetch messages with sender names
     rows = db_fetch_all("""
         SELECT m.sender_id, m.content, m.timestamp, u.anonymous_name
         FROM recovery_messages m
@@ -408,7 +408,9 @@ def get_messages():
         "timestamp": str(r[2]),
         "sender_name": r[3]
     } for r in rows]
+    
     return jsonify(messages)
+
 
 
 
@@ -503,8 +505,14 @@ def mentorship_status():
         ORDER BY m.id DESC LIMIT 1
     """, (request.user_id,))
     if not row:
-        return jsonify(None)
-    return jsonify({"id": row[0], "mentor_id": row[1], "name": row[2], "status": row[3]})
+        return jsonify({"has_mentor": False})
+    return jsonify({
+        "has_mentor": row[3] == 'active',
+        "mentor_id": row[1],
+        "mentor_name": row[2],
+        "status": row[3]
+    })
+
 
 @app.route("/api/mentorship/respond", methods=["POST"])
 @require_auth
