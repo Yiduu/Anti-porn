@@ -125,16 +125,18 @@
 
         textarea, input[type="text"], input[type="number"], select {
             width: 100%;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
+            background: #1e1e2f;
+            border: 1px solid #444;
             border-radius: 16px;
             padding: 15px;
             color: #fff;
             font-family: inherit;
             margin-bottom: 15px;
             outline: none;
+            transition: border-color 0.3s;
         }
-        textarea:focus, input:focus, select:focus { border-color: var(--accent); background: rgba(255,255,255,0.08); }
+        textarea:focus, input:focus, select:focus { border-color: var(--accent); background: #252535; }
+        option { background: #2a2a3a; color: #fff; }
 
         .nav-bar {
             position: fixed;
@@ -152,6 +154,7 @@
             box-shadow: 0 10px 40px rgba(0,0,0,0.6);
             z-index: 1000;
         }
+
 
         .nav-item {
             display: flex;
@@ -248,44 +251,10 @@
     </style>
 </head>
 <body>
-    <!-- Registration Overlay -->
-    <div id="registration-overlay">
-        <div class="app-container">
-            <h1 class="font-outfit" style="font-size: 28px; margin-bottom: 10px; text-align: center;">Welcome, Warrior</h1>
-            <p style="text-align: center; color: var(--text-dim); margin-bottom: 30px;">Let's complete your profile to start your journey.</p>
-            
-            <div class="glass-card">
-                <label>Sex</label>
-                <select id="reg-sex">
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                </select>
-
-                <label>Age</label>
-                <input type="number" id="reg-age" placeholder="Your age">
-
-                <label>Educational Level</label>
-                <input type="text" id="reg-edu" placeholder="e.g. University Graduate">
-
-                <label>When did the addiction start?</label>
-                <select id="reg-addiction">
-                    <option value="<18">Under 18</option>
-                    <option value="18-22">18 - 22 years</option>
-                    <option value="23-30">23 - 30 years</option>
-                    <option value=">30">Over 30</option>
-                </select>
-
-                <label>Longest porn-free streak (days)</label>
-                <input type="number" id="reg-streak" placeholder="0">
-
-                <button class="btn-primary" id="reg-submit-btn" onclick="submitRegistration()">Complete Setup</button>
-            </div>
-        </div>
-    </div>
-
     <div class="app-container">
         <!-- Home / Dashboard -->
         <div id="dashboard-page" class="page active">
+
             <div class="header">
                 <div>
                     <p style="color: var(--text-dim); font-size: 14px;">Welcome back,</p>
@@ -522,11 +491,6 @@
             user = await api("/api/user/me");
             if (!user) return;
 
-            // Check if profile complete
-            if (!user.profile_complete) {
-                document.getElementById("registration-overlay").style.display = "block";
-            }
-
             // Update UI with user data
             document.getElementById("user-name").innerText = user.name || "Warrior";
             document.getElementById("profile-display-name").innerText = user.name || "Profile";
@@ -550,31 +514,7 @@
             lucide.createIcons();
         }
 
-        async function submitRegistration() {
-            const data = {
-                sex: document.getElementById("reg-sex").value,
-                age: parseInt(document.getElementById("reg-age").value),
-                educational_level: document.getElementById("reg-edu").value,
-                addiction_year: document.getElementById("reg-addiction").value,
-                longest_free_streak: parseInt(document.getElementById("reg-streak").value)
-            };
 
-            if (!data.age || !data.educational_level) {
-                tg.showAlert("Please fill in all fields.");
-                return;
-            }
-
-            document.getElementById("reg-submit-btn").disabled = true;
-            const res = await api("/api/profile/complete", { method: "POST", body: JSON.stringify(data) });
-            if (res.success) {
-                haptic.notify('success');
-                document.getElementById("registration-overlay").style.display = "none";
-                init();
-            } else {
-                tg.showAlert("Error saving profile. Try again.");
-                document.getElementById("reg-submit-btn").disabled = false;
-            }
-        }
 
         async function loadDashboard() {
             const verse = await api("/api/daily-verse");
@@ -762,44 +702,60 @@
             document.getElementById("active-mentor-name").innerText = menteeName;
             document.getElementById("active-mentor-initial").innerText = menteeName[0];
             
-            // Allow going back
-            const backBtn = document.createElement("button");
-            backBtn.className = "btn-outline";
-            backBtn.style = "width: auto; padding: 5px 10px; margin-bottom: 10px; font-size: 12px;";
-            backBtn.innerHTML = "<i data-lucide='arrow-left' style='width: 14px;'></i> Back to List";
-            document.getElementById("active-chat-view").prepend(backBtn);
-            backBtn.onclick = () => {
-                document.getElementById("active-chat-view").style.display = "none";
-                document.getElementById("mentor-tools-view").style.display = "block";
-                backBtn.remove();
-                currentChatId = null;
-                clearInterval(chatInterval);
-                chatInterval = null;
-            };
+            // Check if back button exists, if not create one
+            if (!document.getElementById("chat-back-btn")) {
+                const backBtn = document.createElement("button");
+                backBtn.id = "chat-back-btn";
+                backBtn.className = "btn-outline";
+                backBtn.style = "width: auto; padding: 5px 10px; margin-bottom: 10px; font-size: 12px;";
+                backBtn.innerHTML = "<i data-lucide='arrow-left' style='width: 14px;'></i> Back to List";
+                document.getElementById("active-chat-view").prepend(backBtn);
+                backBtn.onclick = () => {
+                    document.getElementById("active-chat-view").style.display = "none";
+                    document.getElementById("mentor-tools-view").style.display = "block";
+                    currentChatId = null;
+                    clearInterval(chatInterval);
+                    chatInterval = null;
+                };
+            }
             lucide.createIcons();
 
-            loadMessages();
-            if (!chatInterval) chatInterval = setInterval(loadMessages, 5000);
+            document.getElementById("chat-messages").innerHTML = "<div style='text-align:center; padding:20px; color:var(--text-dim);'>Loading messages...</div>";
+            loadMessages(true);
+            if (!chatInterval) chatInterval = setInterval(() => loadMessages(false), 5000);
         }
 
-        async function loadMessages() {
+        async function loadMessages(shouldScroll = false) {
+            if (!currentChatId && user.role === 'user') {
+                // User view logic: first load will find the mentor automatically if no currentChatId
+            }
+            
             const path = currentChatId ? `/api/mentor/messages?receiver_id=${currentChatId}` : "/api/mentor/messages";
-            const msgs = await api(path);
-            const container = document.getElementById("chat-messages");
-            if (!msgs) return;
+            try {
+                const msgs = await api(path);
+                const container = document.getElementById("chat-messages");
+                if (!msgs) return;
 
-            if (msgs.length === 0) {
-                container.innerHTML = "<p style='text-align: center; color: var(--text-dim); margin-top: 50px;'>No messages yet. Say hello!</p>";
-            } else {
-                container.innerHTML = msgs.map(m => `
-                    <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
-                        ${m.content}
-                        <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                    </div>
-                `).join("");
-                container.scrollTop = container.scrollHeight;
+                if (msgs.length === 0) {
+                    container.innerHTML = "<p style='text-align: center; color: var(--text-dim); margin-top: 50px;'>No messages yet. Say hello!</p>";
+                } else {
+                    const html = msgs.map(m => `
+                        <div class="msg ${m.sender_id === user.user_id ? 'sent' : 'received'}">
+                            <div class="msg-content">${m.content}</div>
+                            <div class="msg-info">${m.sender_name} • ${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                        </div>
+                    `).join("");
+                    
+                    if (container.innerHTML !== html) {
+                        container.innerHTML = html;
+                        if (shouldScroll) container.scrollTop = container.scrollHeight;
+                    }
+                }
+            } catch (e) {
+                console.error("Chat load error:", e);
             }
         }
+
 
         async function sendMessage() {
             const input = document.getElementById("chat-input");
