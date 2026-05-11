@@ -1,13 +1,12 @@
 import os
 import threading
 from datetime import datetime
-from flask import Flask, request, jsonify, session, render_template
+from flask import Flask, request, jsonify, session, render_template, redirect
 from flask_cors import CORS
 from models import db, User, Message, Meeting
 from functools import wraps
 import uuid
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, session, render_template, redirect
 
 load_dotenv()
 
@@ -59,10 +58,7 @@ def generate_jitsi_link(meeting_id):
 
 # ------------------- Create Tables & Default Users -------------------
 with app.app_context():
-    # Create tables (SQLAlchemy will handle use_alter for messages)
     db.create_all()
-    
-    # Ensure default admin and mentor
     if not User.query.filter_by(role='admin').first():
         admin = User(username='admin', email='admin@example.com', role='admin', full_name='System Admin')
         admin.set_password('admin123')
@@ -74,6 +70,9 @@ with app.app_context():
         print("✅ Default admin (admin/admin123) and mentor (mentor_john/mentor123) created.")
 
 # ------------------- API ROUTES -------------------
+@app.route('/')
+def index():
+    return redirect('/miniapp')
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -178,7 +177,6 @@ def send_message():
     sender = User.query.get(sender_id)
     recipient = User.query.get(recipient_id)
     
-    # Permissions
     if sender.role == 'user' and sender.assigned_mentor_id != recipient_id:
         return jsonify({'error': 'You can only chat with your assigned mentor'}), 403
     if sender.role == 'mentor':
@@ -284,22 +282,19 @@ def get_mentor_clients():
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html')
-@app.route('/')
-def index():
-    return redirect('/miniapp')
 
-# ------------------- Telegram Bot Thread -------------------
-def run_telegram_bot():
-    from telegram_bot import main as bot_main
-    bot_main()
-
-if os.environ.get('TELEGRAM_BOT_TOKEN'):
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-    print("🤖 Telegram bot started in background thread")
-else:
-    print("⚠️ TELEGRAM_BOT_TOKEN not set, bot not started")
+# ------------------- Startup: Flask in background, Bot in main -------------------
+def run_flask():
+    """Run the Flask app in a background thread (for Render health checks & Mini App)"""
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    # Start Flask in a daemon thread (so it doesn't block the bot)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print("🌐 Flask server started in background thread")
+
+    # Now start the Telegram bot in the MAIN thread (where signals are allowed)
+    from telegram_bot import main as bot_main
+    bot_main()
