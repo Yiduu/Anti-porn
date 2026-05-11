@@ -10,13 +10,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(
         "👋 Welcome to the Counseling Platform!\n\n"
-        "Click the button below to open the Mini App.",
+        "Click the button below to open the Mini App.\n"
+        "Register, chat with your mentor, schedule video meetings, and more.",
         reply_markup=reply_markup
     )
 
 def main():
     if not TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN not set.")
+        print("❌ TELEGRAM_BOT_TOKEN not set. Bot will not run.")
         return
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
