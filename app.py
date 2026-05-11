@@ -35,48 +35,62 @@ SECRET_KEY = app.secret_key
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -------------------- Database Helpers --------------------
+from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+# -------------------- Database Setup --------------------
+
+try:
+    db_pool = pool.SimpleConnectionPool(
+        1, 10,  # min 1, max 10 connections
+        dsn=DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
+    logger.info("✅ Database connection pool created successfully")
+except Exception as e:
+    logger.error(f"❌ Failed to create database pool: {e}")
+    db_pool = None
+
+def db_execute(query, params=(), fetch=False, fetchone=False, fetch_id=False):
+    """Execute a SQL query using the global connection pool."""
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            if fetch:
+                result = cur.fetchall()
+            elif fetchone:
+                result = cur.fetchone()
+            elif fetch_id:
+                try:
+                    result = cur.fetchone()[0]
+                except:
+                    result = None
+            else:
+                result = True
+            conn.commit()
+            return result
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        if conn:
+            conn.rollback()
+        return None
+    finally:
+        if conn:
+            db_pool.putconn(conn)
 
 def db_fetch_one(query, params=()):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
+    return db_execute(query, params, fetchone=True)
 
 def db_fetch_all(query, params=()):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
-
-def db_execute(query, params=(), fetch_id=False):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    res = None
-    if fetch_id:
-        try:
-            res = cur.fetchone()[0]
-        except:
-            res = None
-    conn.commit()
-    cur.close()
-    conn.close()
-    return res if fetch_id else True
+    return db_execute(query, params, fetch=True)
 
 def init_db_types():
     """Migrate all ID columns to TEXT and add new registration columns."""
+    conn = None
     try:
-        conn = get_db_connection()
+        conn = db_pool.getconn()
         cur = conn.cursor()
         
         # Migrate IDs
@@ -111,9 +125,11 @@ def init_db_types():
         conn.commit()
         logger.info("✅ Database migrations successful.")
         cur.close()
-        conn.close()
     except Exception as e:
         logger.error(f"⚠️ Database migration note: {e}")
+        if conn: conn.rollback()
+    finally:
+        if conn: db_pool.putconn(conn)
 
 # Run migrations
 init_db_types()
@@ -165,8 +181,25 @@ def ping():
 @app.route("/")
 def index():
     token = request.args.get('token')
-    # If no token in URL, we'll let the frontend check Telegram WebApp data
+    if not token:
+        return redirect("/login")
+    
+    # Verify token
+    try:
+        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        user_id = str(data["user_id"])
+        user = db_fetch_one("SELECT user_id FROM users WHERE user_id = %s::text", (user_id,))
+        if not user:
+            return redirect("/login")
+    except:
+        return redirect("/login")
+        
     return render_template("recovery_dashboard.html", token=token)
+
+@app.route("/login")
+def login_page():
+    """Show a beautiful login page for unauthenticated users."""
+    return render_template("login.html")
 
 @app.route('/api/verify-token/<token>')
 def verify_token(token):
@@ -180,6 +213,32 @@ def verify_token(token):
         pass
     return jsonify({'success': False}), 401
 
+@app.route('/api/verify-token/tg', methods=['POST'])
+def verify_tg_token():
+    """Exchange Telegram initData for a session token."""
+    data = request.json
+    init_data = data.get('initData')
+    if not init_data:
+        return jsonify({"success": False, "error": "No data"}), 400
+    
+    try:
+        from urllib.parse import parse_qs
+        params = parse_qs(init_data)
+        user_json = json.loads(params['user'][0])
+        user_id = str(user_json['id'])
+        
+        # Check if user exists
+        user = db_fetch_one("SELECT user_id FROM users WHERE user_id = %s::text", (user_id,))
+        if not user:
+            # Auto-register if not exists
+            register_user(user_id, user_json.get('username'))
+            
+        token = generate_token(user_id)
+        return jsonify({"success": True, "token": token})
+    except Exception as e:
+        logger.error(f"TG Auth error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
 @app.route("/landing")
 def landing():
     token = request.args.get("token")
@@ -192,8 +251,8 @@ def landing():
         
         # Check if user already completed profile
         row = db_fetch_one("SELECT profile_complete FROM users WHERE user_id = %s::text", (u_id,))
-        if row and row[0]:
-            return redirect(f"/recovery?token={token}")
+        if row and row['profile_complete']:
+            return redirect(f"/?token={token}")
     except:
         pass
     return render_template("landing.html", token=token)
@@ -249,11 +308,11 @@ def get_user():
     if not row:
         return jsonify({"error": "User not found"}), 404
     return jsonify({
-        "user_id": row[0], "name": row[1], "role": row[2], "streak": row[3],
-        "last_checkin": str(row[4]) if row[4] else None, "notifications": row[5],
-        "profile_complete": row[6], "sex": row[7], "age": row[8], "education": row[9],
-        "addiction_year": row[10], "longest_streak": row[11], "real_name": row[12],
-        "work_status": row[13], "mentor_years": row[14], "training": row[15], "testimony": row[16], "bio": row[17]
+        "user_id": row['user_id'], "name": row['anonymous_name'], "role": row['recovery_role'], "streak": row['recovery_streak'],
+        "last_checkin": str(row['recovery_last_checkin']) if row['recovery_last_checkin'] else None, "notifications": row['recovery_notifications'],
+        "profile_complete": row['profile_complete'], "sex": row['sex'], "age": row['age'], "education": row['educational_level'],
+        "addiction_year": row['addiction_year'], "longest_streak": row['longest_free_streak'], "real_name": row['real_name'],
+        "work_status": row['work_status'], "mentor_years": row['mentorship_experience_years'], "training": row['professional_training'], "testimony": row['self_recovery_testimony'], "bio": row['bio']
     })
 
 @app.route("/api/register/user", methods=["POST"])
@@ -298,8 +357,9 @@ def checkin():
     today = datetime.now().date()
     user_data = db_fetch_one("SELECT recovery_last_checkin, recovery_streak FROM users WHERE user_id = %s::text", (request.user_id,))
     if not user_data: return jsonify({"error": "User not found"}), 404
-    last, current_streak = user_data
     if last == today: return jsonify({"error": "Already checked in today"}), 400
+    current_streak = user_data['recovery_streak']
+    last = user_data['recovery_last_checkin']
     new_streak = 1
     if status == "yes":
         if last:
@@ -355,7 +415,7 @@ def get_messages():
             LIMIT 1
         """, (current_user, current_user))
     if not mentorship: return jsonify([])
-    mentorship_id = mentorship[0]
+    mentorship_id = mentorship['id']
     rows = db_fetch_all("""
         SELECT m.sender_id, m.content, m.timestamp, u.anonymous_name
         FROM recovery_messages m
@@ -363,7 +423,7 @@ def get_messages():
         WHERE m.mentorship_id = %s
         ORDER BY m.timestamp ASC
     """, (mentorship_id,))
-    return jsonify([{"sender_id": r[0], "content": r[1], "timestamp": str(r[2]), "sender_name": r[3]} for r in rows])
+    return jsonify([{"sender_id": r['sender_id'], "content": r['content'], "timestamp": str(r['timestamp']), "sender_name": r['anonymous_name']} for r in rows])
 
 @app.route("/api/mentor/message", methods=["POST"])
 @require_auth
@@ -379,19 +439,20 @@ def send_message():
            OR (user_id = %s::text AND mentor_id = %s::text) )
     """, (request.user_id, receiver, receiver, request.user_id))
     if not mentorship: return jsonify({"error": "No active mentorship"}), 400
+    mentorship_id = mentorship['id']
     db_execute("INSERT INTO recovery_messages (mentorship_id, sender_id, receiver_id, content) VALUES (%s, %s::text, %s::text, %s)",
-               (mentorship[0], request.user_id, receiver, content))
+               (mentorship_id, request.user_id, receiver, content))
     user_row = db_fetch_one("SELECT recovery_notifications FROM users WHERE user_id = %s::text", (receiver,))
-    if user_row and user_row[0]:
+    if user_row and user_row['recovery_notifications']:
         sender_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
-        send_telegram_notification(receiver, f"📩 New message from {sender_row[0] or 'Someone'} in Recovery App.")
+        send_telegram_notification(receiver, f"📩 New message from {sender_row['anonymous_name'] or 'Someone'} in Recovery App.")
     return jsonify({"success": True})
 
 @app.route("/api/mentors", methods=["GET"])
 @require_auth
 def get_mentors():
     rows = db_fetch_all("SELECT user_id, anonymous_name, bio FROM users WHERE recovery_role = 'mentor'")
-    return jsonify([{"id": r[0], "name": r[1], "bio": r[2]} for r in rows])
+    return jsonify([{"id": r['user_id'], "name": r['anonymous_name'], "bio": r['bio']} for r in rows])
 
 @app.route("/api/mentorship/request", methods=["POST"])
 @require_auth
@@ -402,7 +463,7 @@ def request_mentorship():
     if exists: return jsonify({"error": "Request already pending or active"}), 400
     db_execute("INSERT INTO recovery_mentorships (user_id, mentor_id, status) VALUES (%s::text, %s::text, 'pending')", (request.user_id, mentor_id))
     user_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
-    send_telegram_notification(mentor_id, f"🤝 New mentorship request from {user_row[0] or 'A user'}! Check the app.")
+    send_telegram_notification(mentor_id, f"🤝 New mentorship request from {user_row['anonymous_name'] or 'A user'}! Check the app.")
     return jsonify({"success": True})
 
 @app.route("/api/mentorship/requests", methods=["GET"])
@@ -414,7 +475,7 @@ def get_mentorship_requests():
         JOIN users u ON m.user_id = u.user_id 
         WHERE m.mentor_id = %s::text AND m.status = 'pending'
     """, (request.user_id,))
-    return jsonify([{"id": r[0], "user_id": r[1], "name": r[2], "streak": r[3]} for r in rows])
+    return jsonify([{"id": r['id'], "user_id": r['user_id'], "name": r['anonymous_name'], "streak": r['recovery_streak']} for r in rows])
 
 @app.route("/api/mentorship/respond", methods=["POST"])
 @require_auth
@@ -424,10 +485,10 @@ def respond_mentorship():
     action = data.get("action")
     status = 'active' if action == 'accept' else 'rejected'
     row = db_fetch_one("SELECT user_id, mentor_id FROM recovery_mentorships WHERE id = %s", (request_id,))
-    if not row or str(row[1]) != str(request.user_id): return jsonify({"error": "Unauthorized"}), 403
+    if not row or str(row['mentor_id']) != str(request.user_id): return jsonify({"error": "Unauthorized"}), 403
     db_execute("UPDATE recovery_mentorships SET status = %s WHERE id = %s", (status, request_id))
     mentor_row = db_fetch_one("SELECT anonymous_name FROM users WHERE user_id = %s::text", (request.user_id,))
-    send_telegram_notification(row[0], f"🤝 Your mentorship request to {mentor_row[0] or 'Mentor'} was {status}!")
+    send_telegram_notification(row['user_id'], f"🤝 Your mentorship request to {mentor_row['anonymous_name'] or 'Mentor'} was {status}!")
     return jsonify({"success": True})
 
 @app.route("/api/user/active-mentorship", methods=["GET"])
@@ -441,7 +502,7 @@ def active_mentorship():
         ORDER BY m.id DESC LIMIT 1
     """, (request.user_id,))
     if row:
-        return jsonify({"has_mentor": row[3] == 'active', "mentor_id": row[0], "mentor_name": row[1], "mentor_bio": row[2], "status": row[3]})
+        return jsonify({"has_mentor": row['status'] == 'active', "mentor_id": row['user_id'], "mentor_name": row['anonymous_name'], "mentor_bio": row['bio'], "status": row['status']})
     return jsonify({"has_mentor": False})
 
 @app.route("/api/mentees", methods=["GET"])
@@ -453,19 +514,19 @@ def get_mentees():
         JOIN recovery_mentorships m ON u.user_id = m.user_id
         WHERE m.mentor_id = %s::text AND m.status = 'active'
     """, (request.user_id,))
-    return jsonify([{"id": r[0], "name": r[1], "streak": r[2]} for r in rows])
+    return jsonify([{"id": r['user_id'], "name": r['anonymous_name'], "streak": r['recovery_streak']} for r in rows])
 
 @app.route("/api/sessions", methods=["GET"])
 @require_auth
 def get_sessions():
     rows = db_fetch_all("SELECT id, title, description, scheduled_time, jitsi_room, host_id FROM recovery_live_sessions WHERE scheduled_time > NOW() ORDER BY scheduled_time")
-    return jsonify([{"id": r[0], "title": r[1], "description": r[2], "time": str(r[3]), "room": r[4], "host_id": r[5]} for r in rows])
+    return jsonify([{"id": r['id'], "title": r['title'], "description": r['description'], "time": str(r['scheduled_time']), "room": r['jitsi_room'], "host_id": r['host_id']} for r in rows])
 
 @app.route("/api/sessions", methods=["POST"])
 @require_auth
 def create_session():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-    if user[0] not in ('mentor', 'admin'): return jsonify({"error": "Unauthorized"}), 403
+    if user['recovery_role'] not in ('mentor', 'admin'): return jsonify({"error": "Unauthorized"}), 403
     data = request.json
     jitsi_room = f"recovery-{uuid.uuid4().hex[:8]}"
     db_execute("INSERT INTO recovery_live_sessions (title, description, host_id, scheduled_time, jitsi_room) VALUES (%s, %s, %s, %s, %s)",
@@ -478,7 +539,7 @@ def delete_session(session_id):
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
     session = db_fetch_one("SELECT host_id FROM recovery_live_sessions WHERE id = %s", (session_id,))
     if not session: return jsonify({"error": "Not found"}), 404
-    if user[0] == 'admin' or str(session[0]) == request.user_id:
+    if user['recovery_role'] == 'admin' or str(session['host_id']) == request.user_id:
         db_execute("DELETE FROM recovery_live_sessions WHERE id = %s", (session_id,))
         return jsonify({"success": True})
     return jsonify({"error": "Unauthorized"}), 403
@@ -488,7 +549,7 @@ def delete_session(session_id):
 def join_session(session_id):
     row = db_fetch_one("SELECT jitsi_room FROM recovery_live_sessions WHERE id = %s", (session_id,))
     if not row: return jsonify({"error": "Not found"}), 404
-    return jsonify({"jitsi_url": f"https://meet.jit.si/{row[0]}"})
+    return jsonify({"jitsi_url": f"https://meet.jit.si/{row['jitsi_room']}"})
 
 @app.route("/api/user/update", methods=["POST"])
 @require_auth
@@ -501,15 +562,15 @@ def update_profile():
 @require_auth
 def admin_users():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-    if user[0] != 'admin': return jsonify({"error": "Admin only"}), 403
+    if user['recovery_role'] != 'admin': return jsonify({"error": "Admin only"}), 403
     rows = db_fetch_all("SELECT user_id, anonymous_name, recovery_role, profile_complete FROM users")
-    return jsonify([{"id": r[0], "name": r[1], "role": r[2], "profile_complete": r[3]} for r in rows])
+    return jsonify([{"id": r['user_id'], "name": r['anonymous_name'], "role": r['recovery_role'], "profile_complete": r['profile_complete']} for r in rows])
 
 @app.route("/api/admin/set-role", methods=["POST"])
 @require_auth
 def set_role():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-    if user[0] != 'admin': return jsonify({"error": "Admin only"}), 403
+    if user['recovery_role'] != 'admin': return jsonify({"error": "Admin only"}), 403
     data = request.json
     db_execute("UPDATE users SET recovery_role = %s WHERE user_id = %s::text", (data.get("role"), data.get("user_id")))
     return jsonify({"success": True})
@@ -518,12 +579,12 @@ def set_role():
 @require_auth
 def broadcast():
     user = db_fetch_one("SELECT recovery_role FROM users WHERE user_id = %s::text", (request.user_id,))
-    if user[0] != 'admin': return jsonify({"error": "Admin only"}), 403
+    if user['recovery_role'] != 'admin': return jsonify({"error": "Admin only"}), 403
     data = request.json
     message = data.get("message")
     rows = db_fetch_all("SELECT user_id FROM users WHERE recovery_notifications = TRUE")
     for row in rows:
-        send_telegram_notification(row[0], f"📢 Admin announcement:\n\n{message}\n\n{RENDER_URL}/recovery?token={generate_token(row[0])}")
+        send_telegram_notification(row['user_id'], f"📢 Admin announcement:\n\n{message}\n\n{RENDER_URL}/?token={generate_token(row['user_id'])}")
     return jsonify({"success": True})
 
 # -------------------- Telegram Bot Logic --------------------
@@ -578,7 +639,7 @@ def check_upcoming_sessions():
         users = db_fetch_all("SELECT user_id FROM users WHERE recovery_notifications = TRUE")
         for r in rows:
             for u in users:
-                send_telegram_notification(u[0], f"🔔 Live session in 15 minutes!\n\nTitle: {r[1]}\nJoin: {RENDER_URL}/")
+                send_telegram_notification(u['user_id'], f"🔔 Live session in 15 minutes!\n\nTitle: {r['title']}\nJoin: {RENDER_URL}/")
     except Exception as e:
         logger.error(f"Scheduler error: {e}")
 
