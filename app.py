@@ -164,7 +164,21 @@ def ping():
 
 @app.route("/")
 def index():
-    return redirect("/recovery")
+    token = request.args.get('token')
+    # If no token in URL, we'll let the frontend check Telegram WebApp data
+    return render_template("recovery_dashboard.html", token=token)
+
+@app.route('/api/verify-token/<token>')
+def verify_token(token):
+    try:
+        data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        user_id = str(data['user_id'])
+        user = db_fetch_one("SELECT user_id FROM users WHERE user_id = %s::text", (user_id,))
+        if user:
+            return jsonify({'success': True, 'user_id': user_id})
+    except Exception:
+        pass
+    return jsonify({'success': False}), 401
 
 @app.route("/landing")
 def landing():
@@ -206,28 +220,10 @@ def mentor_reg_page():
         pass
     return render_template("mentor_registration.html", token=token)
 
-@app.route("/recovery")
-def recovery():
+@app.route("/recovery_legacy") # Kept as legacy for a bit, or can be removed
+def recovery_legacy():
     token = request.args.get("token")
-    if not token:
-        return "Missing token. Please open via Telegram bot.", 400
-    
-    try:
-        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        u_id = str(data["user_id"])
-        
-        # Admin is always allowed
-        if u_id == str(ADMIN_ID):
-            return render_template("recovery_dashboard.html", token=token)
-            
-        row = db_fetch_one("SELECT profile_complete FROM users WHERE user_id = %s::text", (u_id,))
-        if not row or not row[0]:
-            return redirect(f"/landing?token={token}")
-    except Exception as e:
-        logger.error(f"Recovery route error: {e}")
-        return redirect(f"/landing?token={token}")
-        
-    return render_template("recovery_dashboard.html", token=token)
+    return redirect(f"/?token={token}" if token else "/")
 
 @app.route("/admin")
 def admin_page():
@@ -554,10 +550,7 @@ def register_user(user_id, username):
 def generate_webapp_url(user_id: str) -> str:
     token = generate_token(user_id)
     nocache = int(datetime.utcnow().timestamp())
-    # Admin directly to recovery
-    if str(user_id) == str(ADMIN_ID):
-        return f"{RENDER_URL}/recovery?token={token}&_={nocache}"
-    return f"{RENDER_URL}/landing?token={token}&_={nocache}"
+    return f"{RENDER_URL}/?token={token}&_={nocache}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -575,28 +568,7 @@ async def set_persistent_menu_button(update: Update, context: ContextTypes.DEFAU
     await context.bot.set_chat_menu_button(chat_id=user_id, menu_button=MenuButtonWebApp(text="Recovery App", web_app=WebAppInfo(url=url)))
     await update.message.reply_text("✅ Menu button updated!")
 
-def run_bot():
-    if not TELEGRAM_TOKEN: 
-        logger.error("❌ TELEGRAM_TOKEN not found.")
-        return
-    
-    try:
-        # Create a new event loop for this background thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        application = Application.builder().token(TELEGRAM_TOKEN).build()
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("setmenu", set_persistent_menu_button))
-        
-        logger.info("✅ Bot thread starting polling (stop_signals=None)...")
-        # stop_signals=None is required because only the main thread can handle signals
-        application.run_polling(stop_signals=None, close_loop=False)
-    except Exception as e:
-        logger.error(f"❌ Bot thread crashed: {e}")
-
-
-# -------------------- Initialization --------------------
+# -------------------- Scheduler --------------------
 
 def check_upcoming_sessions():
     try:
@@ -606,19 +578,28 @@ def check_upcoming_sessions():
         users = db_fetch_all("SELECT user_id FROM users WHERE recovery_notifications = TRUE")
         for r in rows:
             for u in users:
-                send_telegram_notification(u[0], f"🔔 Live session in 15 minutes!\n\nTitle: {r[1]}\nJoin: {RENDER_URL}/recovery")
+                send_telegram_notification(u[0], f"🔔 Live session in 15 minutes!\n\nTitle: {r[1]}\nJoin: {RENDER_URL}/")
     except Exception as e:
         logger.error(f"Scheduler error: {e}")
 
-# Start scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_upcoming_sessions, trigger="interval", minutes=1)
 scheduler.start()
 
-# Start bot in a background thread if not already running
-if not any(t.name == "BotThread" for t in threading.enumerate()):
-    bot_thread = threading.Thread(target=run_bot, name="BotThread", daemon=True)
-    bot_thread.start()
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False)
+    port = int(os.environ.get("PORT", 5001))
+    # Start Flask in a background thread
+    threading.Thread(
+        target=lambda: app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False),
+        daemon=True
+    ).start()
+    
+    # Start bot polling in the main thread
+    if TELEGRAM_TOKEN:
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("setmenu", set_persistent_menu_button))
+        logger.info("✅ Bot starting in main thread...")
+        application.run_polling()
+    else:
+        logger.error("❌ TELEGRAM_TOKEN not set.")
