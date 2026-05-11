@@ -38,7 +38,6 @@ class User(db.Model):
 class Message(db.Model):
     __tablename__ = 'messages'
     id = db.Column(db.Integer, primary_key=True)
-    # Fixed: use_alter=True to avoid circular FK dependency
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id', use_alter=True, name='fk_messages_sender'), nullable=False)
     recipient_id = db.Column(db.Integer, db.ForeignKey('users.id', use_alter=True, name='fk_messages_recipient'), nullable=False)
     content = db.Column(db.Text, nullable=False)
