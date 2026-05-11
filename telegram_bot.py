@@ -1,10 +1,9 @@
 import os
-import asyncio
 from telegram import Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-WEBAPP_URL = os.environ.get('WEBAPP_URL', 'https://anti-porn.onrender.com/miniapp')  # update to your actual URL
+WEBAPP_URL = os.environ.get('WEBAPP_URL', 'https://your-app.onrender.com/miniapp')  # Change to your actual URL
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[KeyboardButton("Open Counseling App 🎯", web_app=WebAppInfo(url=WEBAPP_URL))]]
@@ -25,15 +24,11 @@ def main():
         print("❌ TELEGRAM_BOT_TOKEN not set. Bot will not run.")
         return
 
-    # Create a new event loop for this thread (required for Python 3.11+)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    # Disable signal handlers because we're not in the main thread
-    app = Application.builder().token(TOKEN).use_signals(False).build()
+    # Build the application (we are in main thread – signals are allowed)
+    app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
 
-    print("🚀 Telegram bot is polling...")
+    print("🤖 Telegram bot is polling (main thread)...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
