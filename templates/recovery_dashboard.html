@@ -276,44 +276,43 @@
             try { tg.disableVerticalSwipes(); } catch(e) {}
             lucide.createIcons();
 
-            let userId = null;
-            // 1. Try Telegram WebApp data
-            if (tg.initDataUnsafe?.user?.id) {
-                userId = String(tg.initDataUnsafe.user.id);
-                log(`Authenticated via Telegram ID: ${userId}`);
-            }
-
-            // 2. Verify token if userId not found or as primary auth
+            // 1. If we have a token in URL, use it
             if (token) {
-                try {
-                    const res = await fetch(`/api/verify-token/${token}`);
-                    const data = await res.json();
-                    if (data.success) {
-                        userId = String(data.user_id);
-                        log(`Authenticated via Token. UserID: ${userId}`);
-                    }
-                } catch(e) { log("Token verification failed."); }
+                log("Using URL token...");
+                await loadUserAndProfile();
+                return;
             }
 
-            if (userId) {
-                window.userId = userId;
-                // If we don't have a token, we might need to get one or rely on userId
-                // For now, let's proceed to load the app
-                document.getElementById('authScreen').style.opacity = "0";
-                setTimeout(() => {
-                    document.getElementById('authScreen').style.display = 'none';
-                    document.getElementById('mainApp').style.display = 'block';
-                    loadUserAndProfile();
-                }, 500);
-            } else {
-                document.getElementById('auth-error').style.display = 'block';
-                document.querySelector('.spinner').style.display = 'none';
+            // 2. If no token, try Telegram initData
+            if (tg.initData) {
+                log("No token found. Authenticating via Telegram...");
+                try {
+                    const response = await fetch('/api/verify-token/tg', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ initData: tg.initData })
+                    });
+                    const data = await response.json();
+                    if (data.success && data.token) {
+                        token = data.token;
+                        log("TG Auth success.");
+                        await loadUserAndProfile();
+                        return;
+                    }
+                } catch(e) { log("TG Auth request failed."); }
             }
+
+            // 3. Fallback to login page if all else fails
+            log("Authentication failed. Redirecting to login...");
+            window.location.href = "/login";
         }
 
         async function loadUserAndProfile() {
             try {
-                // We use the global token or userId
+                // Show splash screen state
+                document.getElementById('authScreen').style.display = 'flex';
+                document.getElementById('mainApp').style.display = 'none';
+
                 user = await api("/api/user/me");
                 if (!user) throw new Error("Connection failed");
 
@@ -324,10 +323,20 @@
 
                 await finalizeInit();
                 
+                // Success! Show app
+                document.getElementById('authScreen').style.opacity = "0";
+                setTimeout(() => {
+                    document.getElementById('authScreen').style.display = 'none';
+                    document.getElementById('mainApp').style.display = 'block';
+                }, 500);
+
                 // Keep-alive
                 setInterval(() => fetch('/ping').catch(() => {}), 240000);
             } catch (e) {
-                tg.showAlert("Sanctuary unreachable. Please restart.");
+                log("Load failed: " + e);
+                document.getElementById('auth-error').style.display = 'block';
+                document.querySelector('.spinner').style.display = 'none';
+                document.getElementById('auth-error-msg').innerText = "Sanctuary connection failed. Please restart the app.";
             }
         }
 
