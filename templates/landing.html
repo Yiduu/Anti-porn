@@ -130,31 +130,45 @@
         }
 
         window.onload = async () => {
-            const webAppTimeout = setTimeout(() => {
-                if (!tg.initData) updateSplash("WebApp failed to initialize. Please restart.", true);
-            }, 5000);
-
             tg.ready();
             tg.expand();
-            tg.disableVerticalSwipes();
-            clearTimeout(webAppTimeout);
+            try { tg.disableVerticalSwipes(); } catch(e) {}
             lucide.createIcons();
+
+            // Immediate redirect if token exists and user is admin or registered
+            if (token) {
+                try {
+                    const res = await fetch(`/api/user/me`, { headers: { "Authorization": token } });
+                    if (res.ok) {
+                        const user = await res.json();
+                        if (user.role === 'admin' || user.profile_complete) {
+                            window.location.href = "/recovery?token=" + token;
+                            return;
+                        }
+                    }
+                } catch(e) {}
+            }
 
             const slowTimer = setTimeout(() => {
                 updateSplash("Waking up the sanctuary... Please wait.");
             }, 3000);
 
             try {
-                await retryWithBackoff(() => fetch('/ping').then(r => { if(!r.ok) throw new Error(); return r.json(); }));
+                // Ping with timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                await fetch('/ping', { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
                 setTimeout(() => {
                     document.getElementById("splash-screen").style.opacity = "0";
                     setTimeout(() => document.getElementById("splash-screen").style.display = "none", 500);
                 }, 800);
             } catch (e) {
-                document.querySelector(".splash-text").innerHTML = "CONNECTION FAILED<br><button onclick='location.reload()' style='margin-top:20px; background:var(--accent); border:none; padding:10px 20px; border-radius:10px;'>RETRY</button>";
-                document.querySelector(".loader-ring").style.display = "none";
+                updateSplash("CONNECTION SLOW", true);
             }
         };
+
     </script>
 </body>
 </html>
