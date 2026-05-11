@@ -131,8 +131,8 @@ def init_db_types():
     finally:
         if conn: db_pool.putconn(conn)
 
-# Run migrations
-init_db_types()
+# Run migrations manually once, not on startup as requested
+# init_db_types()
 
 # -------------------- Authentication --------------------
 
@@ -180,38 +180,92 @@ def ping():
 
 @app.route("/")
 def index():
-    token = request.args.get('token')
-    if not token:
-        return redirect("/login")
-    
-    # Verify token
-    try:
-        data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        user_id = str(data["user_id"])
-        user = db_fetch_one("SELECT user_id FROM users WHERE user_id = %s::text", (user_id,))
-        if not user:
-            return redirect("/login")
-    except:
-        return redirect("/login")
-        
-    return render_template("recovery_dashboard.html", token=token)
+    """Minimal static loader page - zero dependencies, bulletproof for mobile."""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+    <title>Loading...</title>
+    <style>body{background:#050505;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FFD700;font-family:sans-serif;}</style>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    </head>
+    <body><div id="status">Initializing...</div>
+    <script>
+    (function(){
+      const statusDiv = document.getElementById('status');
+      statusDiv.innerText = 'Connecting...';
+      let userId = null;
+      let token = null;
 
-@app.route("/login")
-def login_page():
-    """Show a beautiful login page for unauthenticated users."""
-    return render_template("login.html")
+      // 1. Try Telegram WebApp
+      if(window.Telegram && window.Telegram.WebApp){
+        window.Telegram.WebApp.expand();
+        window.Telegram.WebApp.ready();
+        const user = window.Telegram.WebApp.initDataUnsafe?.user;
+        if(user && user.id) userId = String(user.id);
+      }
+
+      // 2. If no TG user, check URL token
+      const params = new URLSearchParams(window.location.search);
+      token = params.get('token');
+
+      if(!userId && token){
+        fetch('/api/verify-token/' + token)
+          .then(r=>r.json())
+          .then(data=>{
+            if(data.success && data.user_id){
+              userId = data.user_id;
+              loadApp(userId, token);
+            } else { statusDiv.innerText = 'Invalid session. Please reopen from Telegram bot.'; }
+          })
+          .catch(()=>{ statusDiv.innerText = 'Network error. Check connection.'; });
+      } else if (userId) {
+        // We have TG userId, we need a token for API calls anyway
+        // If we don't have one in URL, try to get one
+        if (!token) {
+             fetch('/api/verify-token/tg', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ initData: window.Telegram.WebApp.initData })
+             })
+             .then(r=>r.json())
+             .then(data => {
+                if(data.success) loadApp(userId, data.token);
+                else statusDiv.innerText = 'Auth failed.';
+             })
+             .catch(() => { statusDiv.innerText = 'Auth error.'; });
+        } else {
+            loadApp(userId, token);
+        }
+      } else {
+        statusDiv.innerText = 'Missing access. Open from bot.';
+      }
+
+      function loadApp(uid, tok){
+        statusDiv.innerText = 'Loading dashboard...';
+        window.location.href = '/dashboard?user_id=' + uid + '&token=' + (tok || '');
+      }
+    })();
+    </script>
+    </body>
+    </html>
+    """
+
+@app.route("/dashboard")
+def dashboard():
+    """Serve the full dashboard UI."""
+    user_id = request.args.get('user_id')
+    token = request.args.get('token')
+    return render_template("recovery_dashboard.html", user_id=user_id, token=token)
 
 @app.route('/api/verify-token/<token>')
 def verify_token(token):
+    """Fast JWT decode - no database check if possible for speed."""
     try:
         data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = str(data['user_id'])
-        user = db_fetch_one("SELECT user_id FROM users WHERE user_id = %s::text", (user_id,))
-        if user:
-            return jsonify({'success': True, 'user_id': user_id})
+        return jsonify({'success': True, 'user_id': str(data['user_id'])})
     except Exception:
-        pass
-    return jsonify({'success': False}), 401
+        return jsonify({'success': False}), 401
 
 @app.route('/api/verify-token/tg', methods=['POST'])
 def verify_tg_token():
