@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CRC Sanctuary - Authenticating</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0a0a;
+            --bg-gradient: radial-gradient(circle at 10% 20%, #1a1a2e, #0a0a0a);
+            --accent: #FFD700;
+            --text-main: #FFFFFF;
+            --text-dim: #A0A0A0;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .auth-container {
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FFD700 0%, #B8860B 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 215, 0, 0.1);
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .status-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 16px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 20px;
+        }
+
+        .hint {
+            font-size: 14px;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+
+        #error-msg {
+            display: none;
+            color: #ff5555;
+            background: rgba(255, 85, 85, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+    </style>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="logo">CRC Sanctuary</div>
+        <div id="loading-view">
+            <div class="spinner"></div>
+            <div class="status-text">Waking the Sanctuary...</div>
+            <p class="hint">Connecting you to your brothers in faith.</p>
+        </div>
+        <div id="error-msg"></div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        
+        async function authenticate() {
+            try {
+                tg.ready();
+                tg.expand();
+                
+                // If we have initData, try to verify
+                if (tg.initData) {
+                    const response = await fetch('/api/verify-token/tg', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ initData: tg.initData })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success && data.token) {
+                        window.location.href = `/?token=${data.token}`;
+                        return;
+                    }
+                }
+                
+                // If not in TG or failed, show error
+                document.getElementById('loading-view').style.display = 'none';
+                const errorDiv = document.getElementById('error-msg');
+                errorDiv.innerText = "Access Denied. Please open this app from the official Christian Recovery Companion bot on Telegram.";
+                errorDiv.style.display = 'block';
+                
+            } catch (err) {
+                console.error(err);
+                document.getElementById('error-msg').innerText = "Connection lost. Please check your internet and try again.";
+                document.getElementById('error-msg').style.display = 'block';
+            }
+        }
+
+        // Add a small delay to prevent flickering on fast loads
+        setTimeout(authenticate, 800);
+    </script>
+</body>
+</html>
