@@ -1,12 +1,13 @@
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, session, render_template, redirect
 from flask_cors import CORS
 from models import db, User, Message, Meeting
 from functools import wraps
 import uuid
+import jwt
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,34 +23,52 @@ CORS(app, supports_credentials=True)
 
 db.init_app(app)
 
-# ---------- Helper functions ----------
+# Helper: get user from token or session
+def get_current_user():
+    # Try to get from session first
+    if 'user_id' in session:
+        return User.query.get(session['user_id'])
+    # Then try Authorization header
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            user_id = payload.get('user_id')
+            if user_id:
+                return User.query.get(user_id)
+        except jwt.InvalidTokenError:
+            pass
+    return None
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
+        user = get_current_user()
+        if not user:
             return jsonify({'error': 'Unauthorized'}), 401
+        # Store user in request context for easy access
+        request.current_user = user
         return f(*args, **kwargs)
     return decorated
 
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        user = User.query.get(session['user_id'])
+        user = get_current_user()
         if not user or user.role != 'admin':
             return jsonify({'error': 'Admin required'}), 403
+        request.current_user = user
         return f(*args, **kwargs)
     return decorated
 
 def mentor_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        user = User.query.get(session['user_id'])
+        user = get_current_user()
         if not user or user.role not in ['mentor', 'admin']:
             return jsonify({'error': 'Mentor access required'}), 403
+        request.current_user = user
         return f(*args, **kwargs)
     return decorated
 
@@ -70,7 +89,41 @@ with app.app_context():
         db.session.commit()
         print("✅ Default admin (admin/admin123) and mentor (mentor_john/mentor123) created.")
 
-# ---------- API routes ----------
+# ---------- JWT token endpoints ----------
+@app.route('/api/generate-token', methods=['POST'])
+@login_required
+def generate_token():
+    """Generate JWT token for Mini App (after login)"""
+    user = request.current_user
+    token = jwt.encode(
+        {
+            'user_id': user.id,
+            'exp': datetime.now(timezone.utc) + timedelta(days=30)
+        },
+        app.config['SECRET_KEY'],
+        algorithm='HS256'
+    )
+    return jsonify({'token': token})
+
+@app.route('/api/verify-token', methods=['POST'])
+def verify_token():
+    """Verify JWT token and return user data"""
+    data = request.json
+    token = data.get('token')
+    if not token:
+        return jsonify({'error': 'No token provided'}), 401
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        user = User.query.get(payload['user_id'])
+        if not user:
+            return jsonify({'error': 'User not found'}), 401
+        return jsonify({'user': user.to_dict()})
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+# ---------- API routes (modified to use request.current_user) ----------
 @app.route('/')
 def index():
     return redirect('/miniapp')
@@ -95,7 +148,7 @@ def login():
     user = User.query.filter_by(username=data['username']).first()
     if not user or not user.check_password(data['password']):
         return jsonify({'error': 'Invalid credentials'}), 401
-    session['user_id'] = user.id
+    session['user_id'] = user.id  # Keep session for web browser
     return jsonify({'message': 'Login successful', 'user': user.to_dict()})
 
 @app.route('/api/logout', methods=['POST'])
@@ -107,8 +160,7 @@ def logout():
 @app.route('/api/me', methods=['GET'])
 @login_required
 def get_current_user():
-    user = User.query.get(session['user_id'])
-    return jsonify(user.to_dict())
+    return jsonify(request.current_user.to_dict())
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 @login_required
@@ -119,7 +171,7 @@ def get_user(user_id):
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @login_required
 def update_user(user_id):
-    if session['user_id'] != user_id:
+    if request.current_user.id != user_id:
         return jsonify({'error': 'Permission denied'}), 403
     user = User.query.get_or_404(user_id)
     data = request.json
@@ -162,7 +214,7 @@ def delete_user(user_id):
 @login_required
 def send_message():
     data = request.json
-    sender = User.query.get(session['user_id'])
+    sender = request.current_user
     recipient = User.query.get(data['recipient_id'])
     if sender.role == 'user' and sender.assigned_mentor_id != recipient.id:
         return jsonify({'error': 'You can only chat with your assigned mentor'}), 403
@@ -178,7 +230,7 @@ def send_message():
 @app.route('/api/messages/conversation/<int:other_user_id>', methods=['GET'])
 @login_required
 def get_conversation(other_user_id):
-    user_id = session['user_id']
+    user_id = request.current_user.id
     messages = Message.query.filter(
         ((Message.sender_id == user_id) & (Message.recipient_id == other_user_id)) |
         ((Message.sender_id == other_user_id) & (Message.recipient_id == user_id))
@@ -194,7 +246,7 @@ def get_conversation(other_user_id):
 def create_meeting():
     data = request.json
     meeting = Meeting(
-        mentor_id=session['user_id'],
+        mentor_id=request.current_user.id,
         client_id=data.get('client_id'),
         is_global=data.get('is_global', False),
         title=data['title'],
@@ -211,7 +263,7 @@ def create_meeting():
 @app.route('/api/meetings', methods=['GET'])
 @login_required
 def get_meetings():
-    user = User.query.get(session['user_id'])
+    user = request.current_user
     if user.role == 'mentor':
         meetings = Meeting.query.filter_by(mentor_id=user.id).order_by(Meeting.start_time).all()
     elif user.role == 'user':
@@ -226,7 +278,7 @@ def get_meetings():
 @app.route('/api/meetings/instant/<int:mentor_id>', methods=['POST'])
 @login_required
 def instant_meeting(mentor_id):
-    user = User.query.get(session['user_id'])
+    user = request.current_user
     mentor = User.query.get_or_404(mentor_id)
     if user.role == 'user' and user.assigned_mentor_id != mentor_id:
         return jsonify({'error': 'This is not your assigned mentor'}), 403
@@ -247,7 +299,7 @@ def instant_meeting(mentor_id):
 @app.route('/api/mentor/clients', methods=['GET'])
 @login_required
 def get_mentor_clients():
-    user = User.query.get(session['user_id'])
+    user = request.current_user
     if user.role not in ['mentor', 'admin']:
         return jsonify({'error': 'Access denied'}), 403
     if user.role == 'admin':
@@ -256,15 +308,13 @@ def get_mentor_clients():
         clients = User.query.filter_by(assigned_mentor_id=user.id).all()
     return jsonify([c.to_dict() for c in clients])
 
-# Health check endpoints (for Render / UptimeRobot)
+# Health check endpoints
 @app.route('/ping', methods=['GET', 'HEAD'])
 def ping():
-    """Simple health check."""
     return '', 200
 
 @app.route('/health')
 def health():
-    """Detailed health check."""
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()}), 200
 
 @app.route('/miniapp')
@@ -280,6 +330,6 @@ if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     print("🌐 Flask server started in background thread")
-    time.sleep(2)  # Give Flask a moment to bind port
+    time.sleep(2)
     from telegram_bot import main as bot_main
     bot_main()
