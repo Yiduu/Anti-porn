@@ -116,6 +116,10 @@
       animation: spin 1s linear infinite; margin: 20px auto;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .error-box {
+      background: rgba(255,0,0,0.1); border: 1px solid #ff4444; border-radius: 8px;
+      padding: 16px; text-align: center; margin: 20px;
+    }
   </style>
 </head>
 <body>
@@ -125,6 +129,7 @@
 <div id="authScreen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
   <div class="spinner"></div>
   <h2 style="margin-top:20px; color:var(--primary);">Loading...</h2>
+  <p id="loadingMsg" style="margin-top:10px; color:var(--text-dim); font-size:0.8rem;"></p>
 </div>
 
 <div id="mainApp" style="display:none;">
@@ -237,8 +242,11 @@
   let currentChatPartner = null;
   let messagePollInterval = null;
 
+  // Axios setup with credentials and timeout
   const api = axios.create({ baseURL: window.location.origin, withCredentials: true });
+  api.defaults.timeout = 10000; // 10 seconds
 
+  // Helper to show toast
   function toast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -246,11 +254,38 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
+  // Escape HTML
+  function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+  // Check auth with timeout and retry
   async function checkAuth() {
+    const authScreen = document.getElementById('authScreen');
+    const loadingMsg = document.getElementById('loadingMsg');
+    let timeoutId;
+    
+    // Show a status message
+    loadingMsg.textContent = 'Connecting to server...';
+    
+    // Set a timeout to detect if the request hangs
+    timeoutId = setTimeout(() => {
+      loadingMsg.textContent = 'Server not responding. Please check your internet.';
+      authScreen.innerHTML = `
+        <div class="error-box">
+          <div style="font-size:2rem;">⚠️</div>
+          <h3>Connection Failed</h3>
+          <p>Could not reach the server. Please check your connection and try again.</p>
+          <button class="btn-primary" onclick="location.reload()">Retry</button>
+        </div>
+      `;
+    }, 12000);
+
     try {
       const res = await api.get('/api/me');
+      clearTimeout(timeoutId);
       currentUser = res.data;
-      document.getElementById('authScreen').style.display = 'none';
+      // Store user in localStorage as fallback
+      localStorage.setItem('counseling_user', JSON.stringify(currentUser));
+      authScreen.style.display = 'none';
       document.getElementById('mainApp').style.display = 'block';
       document.getElementById('authPage').classList.remove('active');
       document.getElementById('dashboardPage').classList.add('active');
@@ -258,8 +293,35 @@
       startMessagePolling();
       setupNav();
       if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
-    } catch(e) {
-      document.getElementById('authScreen').style.display = 'none';
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('Auth check failed:', error);
+      
+      // Check if we have a stored user from previous login
+      const storedUser = localStorage.getItem('counseling_user');
+      if (storedUser) {
+        try {
+          currentUser = JSON.parse(storedUser);
+          // Verify still valid by making a quick call
+          await api.get('/api/me');
+          // If it works, continue as logged in
+          authScreen.style.display = 'none';
+          document.getElementById('mainApp').style.display = 'block';
+          document.getElementById('authPage').classList.remove('active');
+          document.getElementById('dashboardPage').classList.add('active');
+          loadDashboard();
+          startMessagePolling();
+          setupNav();
+          if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
+          return;
+        } catch(e) {
+          // Stored user invalid, clear and show login
+          localStorage.removeItem('counseling_user');
+        }
+      }
+      
+      // Show login form
+      authScreen.style.display = 'none';
       document.getElementById('mainApp').style.display = 'block';
       document.getElementById('authPage').classList.add('active');
     }
@@ -277,7 +339,7 @@
         if (page === 'profile') loadProfile();
         if (page === 'chat') loadChatPartners();
         if (page === 'meetings') loadMeetings();
-        if (page === 'admin' && currentUser.role === 'admin') loadAdminPanel();
+        if (page === 'admin' && currentUser && currentUser.role === 'admin') loadAdminPanel();
       };
     });
   }
@@ -288,9 +350,11 @@
   document.getElementById('loginBtn').onclick = async () => {
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
+    if (!username || !password) return toast('Enter username and password');
     try {
       const res = await api.post('/api/login', { username, password });
       currentUser = res.data.user;
+      localStorage.setItem('counseling_user', JSON.stringify(currentUser));
       toast(`Welcome ${currentUser.full_name || currentUser.username}`);
       document.getElementById('authPage').classList.remove('active');
       document.getElementById('dashboardPage').classList.add('active');
@@ -298,7 +362,7 @@
       loadDashboard();
       startMessagePolling();
       if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
-    } catch(e) { toast('Login failed: ' + (e.response?.data?.error || 'error')); }
+    } catch(e) { toast('Login failed: ' + (e.response?.data?.error || 'Network error')); }
   };
 
   document.getElementById('registerBtn').onclick = async () => {
@@ -309,6 +373,7 @@
       password: document.getElementById('regPassword').value,
       role: document.getElementById('regRole').value
     };
+    if (!data.username || !data.password) return toast('Username and password required');
     try {
       await api.post('/api/register', data);
       toast('Registration successful! Please login.');
@@ -317,6 +382,7 @@
   };
 
   async function loadDashboard() {
+    if (!currentUser) return;
     const container = document.getElementById('dashboardContent');
     if (currentUser.role === 'user') {
       let mentorName = 'Not assigned';
@@ -335,17 +401,19 @@
       `;
       document.getElementById('instantCallBtn')?.addEventListener('click', startInstantMeeting);
     } else if (currentUser.role === 'mentor') {
-      const clientsRes = await api.get('/api/mentor/clients');
-      const clients = clientsRes.data;
-      container.innerHTML = `
-        <div class="card">
-          <div class="card-title">Mentor Dashboard</div>
-          <p>You have <strong>${clients.length}</strong> assigned clients.</p>
-          <div class="mt-2">${clients.map(c => `<span class="btn-ghost" style="margin-right:8px;">${escapeHtml(c.full_name || c.username)}</span>`).join(' ')}</div>
-          <button class="btn-ghost" id="viewMeetingsBtn" style="margin-top:12px;">View Meetings</button>
-        </div>
-      `;
-      document.getElementById('viewMeetingsBtn')?.addEventListener('click', () => document.querySelector('[data-page="meetings"]').click());
+      try {
+        const clientsRes = await api.get('/api/mentor/clients');
+        const clients = clientsRes.data;
+        container.innerHTML = `
+          <div class="card">
+            <div class="card-title">Mentor Dashboard</div>
+            <p>You have <strong>${clients.length}</strong> assigned clients.</p>
+            <div class="mt-2">${clients.map(c => `<span class="btn-ghost" style="margin-right:8px;">${escapeHtml(c.full_name || c.username)}</span>`).join(' ')}</div>
+            <button class="btn-ghost" id="viewMeetingsBtn" style="margin-top:12px;">View Meetings</button>
+          </div>
+        `;
+        document.getElementById('viewMeetingsBtn')?.addEventListener('click', () => document.querySelector('[data-page="meetings"]').click());
+      } catch(e) { container.innerHTML = '<div class="card">Error loading clients</div>'; }
     } else if (currentUser.role === 'admin') {
       container.innerHTML = `<div class="card"><div class="card-title">Admin Panel</div><p>Use the Admin tab to manage users and mentors.</p></div>`;
     }
@@ -361,6 +429,7 @@
   }
 
   async function loadProfile() {
+    if (!currentUser) return;
     const infoDiv = document.getElementById('profileInfo');
     infoDiv.innerHTML = `<p><strong>Username:</strong> ${escapeHtml(currentUser.username)}</p><p><strong>Email:</strong> ${escapeHtml(currentUser.email)}</p><p><strong>Role:</strong> ${escapeHtml(currentUser.role)}</p>`;
     document.getElementById('editFullname').value = currentUser.full_name || '';
@@ -375,21 +444,27 @@
       toast('Profile updated');
       currentUser.full_name = full_name;
       currentUser.email = email;
+      localStorage.setItem('counseling_user', JSON.stringify(currentUser));
       loadProfile();
     } catch(e) { toast('Update failed'); }
   };
 
   async function loadChatPartners() {
+    if (!currentUser) return;
     const select = document.getElementById('chatPartnerSelect');
     select.innerHTML = '<option value="">Select a person</option>';
     if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
-      const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
-      select.innerHTML += `<option value="${res.data.id}">Mentor: ${escapeHtml(res.data.full_name || res.data.username)}</option>`;
+      try {
+        const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
+        select.innerHTML += `<option value="${res.data.id}">Mentor: ${escapeHtml(res.data.full_name || res.data.username)}</option>`;
+      } catch(e) {}
     } else if (currentUser.role === 'mentor') {
-      const res = await api.get('/api/mentor/clients');
-      res.data.forEach(c => {
-        select.innerHTML += `<option value="${c.id}">${escapeHtml(c.full_name || c.username)} (Client)</option>`;
-      });
+      try {
+        const res = await api.get('/api/mentor/clients');
+        res.data.forEach(c => {
+          select.innerHTML += `<option value="${c.id}">${escapeHtml(c.full_name || c.username)} (Client)</option>`;
+        });
+      } catch(e) {}
     }
     select.onchange = () => {
       currentChatPartner = select.value;
@@ -399,24 +474,28 @@
 
   async function loadConversation() {
     if (!currentChatPartner) return;
-    const res = await api.get(`/api/messages/conversation/${currentChatPartner}`);
-    const messages = res.data;
-    const container = document.getElementById('chatMessages');
-    container.innerHTML = messages.map(m => `
-      <div class="message-bubble ${m.sender_id === currentUser.id ? 'sent' : 'received'}">
-        <div class="bubble">${escapeHtml(m.content)}<div class="text-dim" style="font-size:0.7rem; margin-top:2px;">${new Date(m.timestamp).toLocaleTimeString()}</div></div>
-      </div>
-    `).join('');
-    container.scrollTop = container.scrollHeight;
+    try {
+      const res = await api.get(`/api/messages/conversation/${currentChatPartner}`);
+      const messages = res.data;
+      const container = document.getElementById('chatMessages');
+      container.innerHTML = messages.map(m => `
+        <div class="message-bubble ${m.sender_id === currentUser.id ? 'sent' : 'received'}">
+          <div class="bubble">${escapeHtml(m.content)}<div class="text-dim" style="font-size:0.7rem; margin-top:2px;">${new Date(m.timestamp).toLocaleTimeString()}</div></div>
+        </div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    } catch(e) { console.error('Load conversation error', e); }
   }
 
   document.getElementById('sendMsgBtn').onclick = async () => {
     if (!currentChatPartner) return toast('Select a chat partner');
     const content = document.getElementById('messageInput').value.trim();
     if (!content) return;
-    await api.post('/api/messages/send', { recipient_id: parseInt(currentChatPartner), content });
-    document.getElementById('messageInput').value = '';
-    loadConversation();
+    try {
+      await api.post('/api/messages/send', { recipient_id: parseInt(currentChatPartner), content });
+      document.getElementById('messageInput').value = '';
+      loadConversation();
+    } catch(e) { toast('Send failed'); }
   };
 
   function startMessagePolling() {
@@ -427,29 +506,32 @@
   }
 
   async function loadMeetings() {
-    const res = await api.get('/api/meetings');
-    const meetings = res.data;
-    const container = document.getElementById('meetingsList');
-    if (meetings.length === 0) container.innerHTML = '<div class="text-dim">No upcoming meetings</div>';
-    else {
-      container.innerHTML = meetings.map(m => `
-        <div class="meeting-card">
-          <div class="flex-between"><strong>${escapeHtml(m.title)}</strong> <span class="btn-ghost" style="padding:2px 6px;">${m.is_global ? 'Global' : 'Personal'}</span></div>
-          <div class="text-dim">${escapeHtml(m.description || '')}</div>
-          <div>📅 ${new Date(m.start_time).toLocaleString()}</div>
-          ${m.meeting_link ? `<a href="${m.meeting_link}" target="_blank" class="btn-ghost" style="display:inline-block; margin-top:8px;">Join Meeting</a>` : ''}
-        </div>
-      `).join('');
-    }
-    if (currentUser.role === 'mentor') {
-      const clientsRes = await api.get('/api/mentor/clients');
-      const clientSelect = document.getElementById('personalClientSelect');
-      clientSelect.innerHTML = '<option value="">Select Client</option>' + clientsRes.data.map(c => `<option value="${c.id}">${escapeHtml(c.full_name || c.username)}</option>`).join('');
-      document.getElementById('showScheduleBtn').style.display = 'block';
-    } else {
-      document.getElementById('showScheduleBtn').style.display = 'none';
-      document.getElementById('scheduleForm').style.display = 'none';
-    }
+    if (!currentUser) return;
+    try {
+      const res = await api.get('/api/meetings');
+      const meetings = res.data;
+      const container = document.getElementById('meetingsList');
+      if (meetings.length === 0) container.innerHTML = '<div class="text-dim">No upcoming meetings</div>';
+      else {
+        container.innerHTML = meetings.map(m => `
+          <div class="meeting-card">
+            <div class="flex-between"><strong>${escapeHtml(m.title)}</strong> <span class="btn-ghost" style="padding:2px 6px;">${m.is_global ? 'Global' : 'Personal'}</span></div>
+            <div class="text-dim">${escapeHtml(m.description || '')}</div>
+            <div>📅 ${new Date(m.start_time).toLocaleString()}</div>
+            ${m.meeting_link ? `<a href="${m.meeting_link}" target="_blank" class="btn-ghost" style="display:inline-block; margin-top:8px;">Join Meeting</a>` : ''}
+          </div>
+        `).join('');
+      }
+      if (currentUser.role === 'mentor') {
+        const clientsRes = await api.get('/api/mentor/clients');
+        const clientSelect = document.getElementById('personalClientSelect');
+        clientSelect.innerHTML = '<option value="">Select Client</option>' + clientsRes.data.map(c => `<option value="${c.id}">${escapeHtml(c.full_name || c.username)}</option>`).join('');
+        document.getElementById('showScheduleBtn').style.display = 'block';
+      } else {
+        document.getElementById('showScheduleBtn').style.display = 'none';
+        document.getElementById('scheduleForm').style.display = 'none';
+      }
+    } catch(e) { toast('Error loading meetings'); }
   }
 
   document.getElementById('showScheduleBtn').onclick = () => {
@@ -476,56 +558,61 @@
       if (!clientId) return toast('Select a client');
       payload.client_id = parseInt(clientId);
     }
-    await api.post('/api/meetings', payload);
-    toast('Meeting scheduled');
-    document.getElementById('scheduleForm').style.display = 'none';
-    loadMeetings();
+    try {
+      await api.post('/api/meetings', payload);
+      toast('Meeting scheduled');
+      document.getElementById('scheduleForm').style.display = 'none';
+      loadMeetings();
+    } catch(e) { toast('Schedule failed'); }
   };
 
   async function loadAdminPanel() {
-    const usersRes = await api.get('/api/admin/users');
-    const allUsers = usersRes.data;
-    const mentors = allUsers.filter(u => u.role === 'mentor');
-    const clients = allUsers.filter(u => u.role === 'user');
-    const container = document.getElementById('adminContent');
-    container.innerHTML = `
-      <div class="card-title">User Management</div>
-      <table style="width:100%; font-size:0.8rem;">
-        <thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Action</th></tr></thead>
-        <tbody>
-          ${allUsers.map(u => `
-            <tr>
-              <td>${u.id}</td><td>${escapeHtml(u.username)}</td><td>${u.role}</td>
-              <td>${u.role !== 'admin' ? `<button class="btn-ghost" onclick="deleteUser(${u.id})">Delete</button>` : ''}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <div class="mt-2"><strong>Assign Mentor</strong><br>
-        <select id="adminUserSelect" class="input-field" style="margin-top:4px;">${clients.map(c => `<option value="${c.id}">${escapeHtml(c.username)}</option>`).join('')}</select>
-        <select id="adminMentorSelect" class="input-field">${mentors.map(m => `<option value="${m.id}">${escapeHtml(m.username)}</option>`).join('')}</select>
-        <button class="btn-primary" id="assignMentorBtn">Assign</button>
-      </div>
-    `;
-    document.getElementById('assignMentorBtn').onclick = async () => {
-      const userId = document.getElementById('adminUserSelect').value;
-      const mentorId = document.getElementById('adminMentorSelect').value;
-      if (!userId || !mentorId) return toast('Select both');
-      await api.post('/api/admin/assign', { user_id: parseInt(userId), mentor_id: parseInt(mentorId) });
-      toast('Mentor assigned');
-      loadAdminPanel();
-    };
+    if (!currentUser || currentUser.role !== 'admin') return;
+    try {
+      const usersRes = await api.get('/api/admin/users');
+      const allUsers = usersRes.data;
+      const mentors = allUsers.filter(u => u.role === 'mentor');
+      const clients = allUsers.filter(u => u.role === 'user');
+      const container = document.getElementById('adminContent');
+      container.innerHTML = `
+        <div class="card-title">User Management</div>
+        <table style="width:100%; font-size:0.8rem;">
+          <thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Action</th></tr></thead>
+          <tbody>
+            ${allUsers.map(u => `
+              <tr>
+                <td>${u.id}</td><td>${escapeHtml(u.username)}</td><td>${u.role}</td>
+                <td>${u.role !== 'admin' ? `<button class="btn-ghost" onclick="deleteUser(${u.id})">Delete</button>` : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="mt-2"><strong>Assign Mentor</strong><br>
+          <select id="adminUserSelect" class="input-field" style="margin-top:4px;">${clients.map(c => `<option value="${c.id}">${escapeHtml(c.username)}</option>`).join('')}</select>
+          <select id="adminMentorSelect" class="input-field">${mentors.map(m => `<option value="${m.id}">${escapeHtml(m.username)}</option>`).join('')}</select>
+          <button class="btn-primary" id="assignMentorBtn">Assign</button>
+        </div>
+      `;
+      document.getElementById('assignMentorBtn').onclick = async () => {
+        const userId = document.getElementById('adminUserSelect').value;
+        const mentorId = document.getElementById('adminMentorSelect').value;
+        if (!userId || !mentorId) return toast('Select both');
+        await api.post('/api/admin/assign', { user_id: parseInt(userId), mentor_id: parseInt(mentorId) });
+        toast('Mentor assigned');
+        loadAdminPanel();
+      };
+    } catch(e) { toast('Error loading admin panel'); }
   }
 
   window.deleteUser = async (userId) => {
     if (confirm('Delete this user?')) {
-      await api.delete(`/api/admin/users/${userId}`);
-      toast('User deleted');
-      loadAdminPanel();
+      try {
+        await api.delete(`/api/admin/users/${userId}`);
+        toast('User deleted');
+        loadAdminPanel();
+      } catch(e) { toast('Delete failed'); }
     }
   };
-
-  function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
   // Particle background
   function initParticles() {
