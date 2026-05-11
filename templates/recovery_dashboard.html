@@ -130,285 +130,224 @@
     </style>
 </head>
 <body>
-    <div id="splash-screen">
-        <div class="loader-ring"></div>
-        <div class="splash-text" id="splash-status">Sanctuary Loading</div>
-        <div id="splash-error" style="display: none; margin-top: 20px; text-align: center; padding: 0 40px;">
-            <p style="color: #ff5555; margin-bottom: 20px; font-size: 14px; line-height: 1.4;" id="error-msg">Connection lost</p>
-            <button class="btn-primary" onclick="location.reload()" style="width: auto; padding: 12px 40px;">RETRY CONNECTION</button>
-            <p style="margin-top: 15px; font-size: 11px; color: var(--text-dim);">If the problem persists, please check your internet or restart the bot.</p>
+    <div id="authScreen">
+        <div class="spinner"></div>
+        <div style="margin-top: 20px; color: var(--accent); font-family: 'Outfit', sans-serif; letter-spacing: 1px;">Loading your sanctuary...</div>
+        <div id="auth-error" style="display: none; margin-top: 20px; text-align: center; padding: 0 40px;">
+            <p style="color: #ff5555; font-size: 14px;" id="auth-error-msg">Access denied.</p>
+            <p style="margin-top: 15px; font-size: 11px; color: var(--text-dim);">Please open this app from the Telegram bot.</p>
         </div>
     </div>
 
-    <div class="app-container">
-        <!-- Dashboard Page -->
-        <div id="dashboard-page" class="page active">
-            <div class="header">
-                <div>
-                    <h2 id="user-name">Warrior</h2>
-                    <p style="color: var(--text-dim); font-size: 13px;">Freedom through Faith</p>
-                </div>
-                <div class="avatar" id="user-avatar">W</div>
-            </div>
-
-            <div class="glass-card streak-card">
-                <div class="streak-count" id="streak">0</div>
-                <p style="color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; font-size: 12px; font-weight: 600;">Days of Purity</p>
-            </div>
-
-            <div class="glass-card" style="padding: 30px 20px;">
-                <p class="verse-text font-playfair" id="verse-text">"The Lord is my strength and my shield..."</p>
-                <p class="verse-ref" id="verse-ref">Psalm 28:7</p>
-            </div>
-
-            <button class="btn-primary" id="checkin-btn" onclick="checkin('yes')">I AM PURE TODAY</button>
-            <p style="text-align: center; margin-top: 15px; color: var(--text-dim); font-size: 13px;" onclick="checkin('no')">I struggled today (Reset Streak)</p>
-        </div>
-
-        <!-- Reflections Page -->
-        <div id="reflections-page" class="page">
-            <h2 style="margin-bottom: 20px;">Daily Reflections</h2>
-            <div class="glass-card">
-                <label style="color: var(--accent); font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; display: block;">Today's Focus</label>
-                <textarea id="reflection-input" placeholder="How was your walk with God today?" style="height: 150px;"></textarea>
-                <button class="btn-primary" onclick="saveReflection()">Save Reflection</button>
-            </div>
-            <div id="reflections-history"></div>
-        </div>
-
-        <!-- Mentorship Page -->
-        <div id="mentorship-page" class="page">
-            <h2 style="margin-bottom: 20px;">Sanctuary Support</h2>
-            
-            <!-- Unified Chat List View -->
-            <div id="chat-list-view">
-                <div id="mentee-list">
-                    <div class="loader-ring" style="width:30px; height:30px; margin:20px auto;"></div>
-                </div>
-                
-                <div id="no-mentor-view-internal" style="display: none; margin-top: 20px;">
-                    <p style="color: var(--text-dim); margin-bottom: 20px;">You are not alone. Connect with a mentor for guidance.</p>
-                    <div id="available-mentors-list"></div>
-                </div>
-
-                <div id="pending-mentor-view" style="display: none; margin-top: 20px;">
-                    <div class="glass-card" style="text-align: center;">
-                        <i data-lucide="clock" style="color: var(--accent); width: 40px; height: 40px; margin-bottom: 10px;"></i>
-                        <p>Request sent to <strong id="pending-mentor-name">...</strong></p>
-                        <p style="color: var(--text-dim); font-size: 13px; margin-top: 5px;">You'll be notified when they accept.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Unified Chat Messages View -->
-            <div id="chat-messages-view" style="display: none;">
+    <div id="mainApp" style="display: none;">
+        <div class="app-container">
+            <!-- Dashboard Page -->
+            <div id="dashboard-page" class="page active">
                 <div class="header">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div class="avatar" id="chat-avatar">M</div>
-                        <h3 id="chat-title">Mentor</h3>
+                    <div>
+                        <h2 id="user-name">Warrior</h2>
+                        <p style="color: var(--text-dim); font-size: 13px;">Freedom through Faith</p>
                     </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button id="video-call-btn" class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%; display:none;" onclick="startPrivateVideoCall()"><i data-lucide="video" style="color: var(--accent);"></i></button>
-                        <button class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%;" onclick="closeChat()"><i data-lucide="x" style="color: var(--text-dim);"></i></button>
+                    <div class="avatar" id="user-avatar">W</div>
+                </div>
+
+                <div class="glass-card streak-card">
+                    <div class="streak-count" id="streak">0</div>
+                    <p style="color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; font-size: 12px; font-weight: 600;">Days of Purity</p>
+                </div>
+
+                <div class="glass-card" style="padding: 30px 20px;">
+                    <p class="verse-text font-playfair" id="verse-text">"The Lord is my strength and my shield..."</p>
+                    <p class="verse-ref" id="verse-ref">Psalm 28:7</p>
+                </div>
+
+                <button class="btn-primary" id="checkin-btn" onclick="checkin('yes')">I AM PURE TODAY</button>
+                <p style="text-align: center; margin-top: 15px; color: var(--text-dim); font-size: 13px;" onclick="checkin('no')">I struggled today (Reset Streak)</p>
+            </div>
+
+            <!-- Reflections Page -->
+            <div id="reflections-page" class="page">
+                <h2 style="margin-bottom: 20px;">Daily Reflections</h2>
+                <div class="glass-card">
+                    <label style="color: var(--accent); font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; display: block;">Today's Focus</label>
+                    <textarea id="reflection-input" placeholder="How was your walk with God today?" style="height: 150px;"></textarea>
+                    <button class="btn-primary" onclick="saveReflection()">Save Reflection</button>
+                </div>
+                <div id="reflections-history"></div>
+            </div>
+
+            <!-- Mentorship Page -->
+            <div id="mentorship-page" class="page">
+                <h2 style="margin-bottom: 20px;">Sanctuary Support</h2>
+                
+                <!-- Unified Chat List View -->
+                <div id="chat-list-view">
+                    <div id="mentee-list">
+                        <div class="loader-ring" style="width:30px; height:30px; margin:20px auto;"></div>
+                    </div>
+                    
+                    <div id="no-mentor-view-internal" style="display: none; margin-top: 20px;">
+                        <p style="color: var(--text-dim); margin-bottom: 20px;">You are not alone. Connect with a mentor for guidance.</p>
+                        <div id="available-mentors-list"></div>
+                    </div>
+
+                    <div id="pending-mentor-view" style="display: none; margin-top: 20px;">
+                        <div class="glass-card" style="text-align: center;">
+                            <i data-lucide="clock" style="color: var(--accent); width: 40px; height: 40px; margin-bottom: 10px;"></i>
+                            <p>Request sent to <strong id="pending-mentor-name">...</strong></p>
+                            <p style="color: var(--text-dim); font-size: 13px; margin-top: 5px;">You'll be notified when they accept.</p>
+                        </div>
                     </div>
                 </div>
-                <div class="glass-card" style="padding: 10px;">
-                    <div id="chat-messages" class="chat-container"></div>
-                    <div style="display: flex; gap: 10px; align-items: flex-end; padding: 10px;">
-                        <textarea id="chat-input" placeholder="Type a message..." style="margin-bottom: 0; min-height: 50px; border-radius: 20px;"></textarea>
-                        <button id="send-message-btn" class="btn-primary" onclick="sendMessage()" style="width: 50px; height: 50px; border-radius: 25px; padding: 0; flex-shrink: 0;"><i data-lucide="send" style="color:#000;"></i></button>
+
+                <!-- Unified Chat Messages View -->
+                <div id="chat-messages-view" style="display: none;">
+                    <div class="header">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div class="avatar" id="chat-avatar">M</div>
+                            <h3 id="chat-title">Mentor</h3>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="video-call-btn" class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%; display:none;" onclick="startPrivateVideoCall()"><i data-lucide="video" style="color: var(--accent);"></i></button>
+                            <button class="btn-outline" style="width: auto; padding: 10px; border-radius: 50%;" onclick="closeChat()"><i data-lucide="x" style="color: var(--text-dim);"></i></button>
+                        </div>
                     </div>
+                    <div class="glass-card" style="padding: 10px;">
+                        <div id="chat-messages" class="chat-container"></div>
+                        <div style="display: flex; gap: 10px; align-items: flex-end; padding: 10px;">
+                            <textarea id="chat-input" placeholder="Type a message..." style="margin-bottom: 0; min-height: 50px; border-radius: 20px;"></textarea>
+                            <button id="send-message-btn" class="btn-primary" onclick="sendMessage()" style="width: 50px; height: 50px; border-radius: 25px; padding: 0; flex-shrink: 0;"><i data-lucide="send" style="color:#000;"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Community Page -->
+            <div id="community-page" class="page">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>Community</h2>
+                    <button id="mentor-create-session" class="btn-primary" style="width: auto; padding: 8px 16px; font-size: 12px; display: none;" onclick="showCreateSession()">+ New Session</button>
+                </div>
+                <div id="live-sessions-list"></div>
+            </div>
+
+            <!-- Profile Page -->
+            <div id="profile-page" class="page">
+                <h2>Account</h2>
+                <div class="glass-card" style="margin-top: 20px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <div class="avatar" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 10px auto;" id="profile-avatar">W</div>
+                        <h3 id="profile-display-name">Warrior</h3>
+                        <span id="role-badge" style="font-size: 10px; background: rgba(255,215,0,0.2); color: var(--accent); padding: 4px 10px; border-radius: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">SEEKER</span>
+                    </div>
+                    <label>Display Name</label>
+                    <input type="text" id="profile-name">
+                    <label>Bio</label>
+                    <textarea id="profile-bio" placeholder="My recovery journey..."></textarea>
+                    <button class="btn-primary" onclick="updateProfile()">Update Profile</button>
+                    <a href="/admin" id="admin-link" style="display: none; margin-top: 15px; color: var(--accent); text-align: center; text-decoration: none; font-size: 14px; font-weight: 600;">Admin Dashboard</a>
                 </div>
             </div>
         </div>
 
-        <!-- Community Page -->
-        <div id="community-page" class="page">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2>Community</h2>
-                <button id="mentor-create-session" class="btn-primary" style="width: auto; padding: 8px 16px; font-size: 12px; display: none;" onclick="showCreateSession()">+ New Session</button>
-            </div>
-            <div id="live-sessions-list"></div>
+        <!-- Navigation -->
+        <div class="nav-bar">
+            <a href="#" class="nav-item active" onclick="showPage('dashboard-page', this)"><i data-lucide="home"></i><span>Home</span></a>
+            <a href="#" class="nav-item" onclick="showPage('reflections-page', this)"><i data-lucide="pen-tool"></i><span>Journal</span></a>
+            <a href="#" class="nav-item" onclick="showPage('community-page', this)"><i data-lucide="users"></i><span>Group</span></a>
+            <a href="#" class="nav-item" onclick="showPage('mentorship-page', this)"><i data-lucide="message-square"></i><span>Support</span></a>
+            <a href="#" class="nav-item" onclick="showPage('profile-page', this)"><i data-lucide="user"></i><span>Account</span></a>
         </div>
-
-        <!-- Profile Page -->
-        <div id="profile-page" class="page">
-            <h2>Account</h2>
-            <div class="glass-card" style="margin-top: 20px;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div class="avatar" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 10px auto;" id="profile-avatar">W</div>
-                    <h3 id="profile-display-name">Warrior</h3>
-                    <span id="role-badge" style="font-size: 10px; background: rgba(255,215,0,0.2); color: var(--accent); padding: 4px 10px; border-radius: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">SEEKER</span>
-                </div>
-                <label>Display Name</label>
-                <input type="text" id="profile-name">
-                <label>Bio</label>
-                <textarea id="profile-bio" placeholder="My recovery journey..."></textarea>
-                <button class="btn-primary" onclick="updateProfile()">Update Profile</button>
-                <a href="/admin?token={{ token }}" id="admin-link" style="display: none; margin-top: 15px; color: var(--accent); text-align: center; text-decoration: none; font-size: 14px; font-weight: 600;">Admin Dashboard</a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Navigation -->
-    <div class="nav-bar">
-        <a href="#" class="nav-item active" onclick="showPage('dashboard-page', this)"><i data-lucide="home"></i><span>Home</span></a>
-        <a href="#" class="nav-item" onclick="showPage('reflections-page', this)"><i data-lucide="pen-tool"></i><span>Journal</span></a>
-        <a href="#" class="nav-item" onclick="showPage('community-page', this)"><i data-lucide="users"></i><span>Group</span></a>
-        <a href="#" class="nav-item" onclick="showPage('mentorship-page', this)"><i data-lucide="message-square"></i><span>Support</span></a>
-        <a href="#" class="nav-item" onclick="showPage('profile-page', this)"><i data-lucide="user"></i><span>Account</span></a>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
-        const token = new URLSearchParams(window.location.search).get("token");
+        let token = new URLSearchParams(window.location.search).get("token");
         let user = null;
         let currentChatId = null;
         let chatInterval = null;
 
-        // --- Enhanced Mobile Support & Hardened API Logic ---
-        function log(msg) {
-            console.log(`[CRC-APP] ${new Date().toISOString()}: ${msg}`);
-        }
+        function log(msg) { console.log(`[CRC-APP] ${new Date().toISOString()}: ${msg}`); }
 
-        function updateSplash(text, isError = false) {
-            log(`Status Update: ${text}${isError ? ' (ERROR)' : ''}`);
-            const status = document.getElementById("splash-status");
-            const errorBlock = document.getElementById("splash-error");
-            if (isError) {
-                status.style.display = "none";
-                errorBlock.style.display = "block";
-                document.getElementById("error-msg").innerText = text;
-                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
-            } else {
-                status.innerText = text;
-                status.style.display = "block";
-                errorBlock.style.display = "none";
-            }
-        }
-
-        async function fetchWithTimeout(resource, options = {}) {
-            const { timeout = 10000 } = options; // 10s timeout
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeout);
-            try {
-                const response = await fetch(resource, { ...options, signal: controller.signal });
-                clearTimeout(id);
-                return response;
-            } catch (err) {
-                clearTimeout(id);
-                throw err;
-            }
-        }
-
-        async function api(path, options = {}, retries = 3) {
-            const url = `${path}${path.includes('?') ? '&' : '?'}_=${Date.now()}`;
-            let lastError = null;
-
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const res = await fetchWithTimeout(url, {
-                        ...options,
-                        headers: { 
-                            "Authorization": token, 
-                            "Content-Type": "application/json",
-                            ...(options.headers || {})
-                        }
-                    });
-
-                    if (res.status === 401) {
-                        log("Unauthorized (401) - Redirecting to landing.");
-                        window.location.href = "/landing?token=" + token;
-                        return;
-                    }
-
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return await res.json();
-                } catch (err) {
-                    lastError = err;
-                    log(`Retry ${i+1}/${retries} failed for ${path}: ${err.message}`);
-                    if (i < retries - 1) {
-                        const delay = 1000 * Math.pow(2, i); // 1s, 2s, 4s
-                        updateSplash(`Connection slow (Attempt ${i+1})...`);
-                        await new Promise(r => setTimeout(r, delay));
-                    }
-                }
-            }
-            throw lastError;
-        }
-
-        // --- App Initialization Sequence ---
-
-        async function loadUserAndProfile() {
-            log("Starting loadUserAndProfile sequence...");
-            try {
-                // 1. Wake up server
-                updateSplash("Waking up the sanctuary...");
-                try {
-                    await fetchWithTimeout('/ping', { method: 'GET' }, { timeout: 8000 });
-                } catch(e) {
-                    log("Ping failed or timed out, but proceeding to API call...");
-                }
-
-                // 2. Load User Data
-                updateSplash("Authenticating your spirit...");
-                user = await api("/api/user/me");
-                
-                if (!user) throw new Error("Connection failed (No user data)");
-
-                // 3. Handle Registration/Admin
-                if (!user.profile_complete && user.role !== 'admin') {
-                    log("Profile incomplete. Redirecting.");
-                    window.location.href = `/landing?token=${token}`;
-                    return;
-                }
-
-                // 4. Initialize Dashboard
-                updateSplash("Preparing your dashboard...");
-                await finalizeInit();
-
-                // 5. Success
-                const splash = document.getElementById("splash-screen");
-                splash.style.opacity = "0";
-                setTimeout(() => {
-                    splash.style.display = "none";
-                    log("Sanctuary opened.");
-                }, 500);
-
-                // 6. Keep-Alive Ping (every 4 minutes)
-                setInterval(() => {
-                    fetch('/ping').then(() => log("Keep-alive ping sent")).catch(() => {});
-                }, 240000);
-
-            } catch (e) {
-                log(`CRITICAL ERROR: ${e.message}`);
-                updateSplash(`⚠️ Sanctuary unreachable: ${e.message}. Please retry.`, true);
-            }
-        }
-
-        window.onload = () => {
+        async function init() {
+            log("Initializing Sanctuary...");
             tg.ready();
             tg.expand();
             try { tg.disableVerticalSwipes(); } catch(e) {}
             lucide.createIcons();
-            loadUserAndProfile();
-        };
 
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
-        }
+            let userId = null;
+            // 1. Try Telegram WebApp data
+            if (tg.initDataUnsafe?.user?.id) {
+                userId = String(tg.initDataUnsafe.user.id);
+                log(`Authenticated via Telegram ID: ${userId}`);
+            }
 
-        function safeHaptic(type = 'light') {
-            if (tg.HapticFeedback) {
-                try { tg.HapticFeedback.impactOccurred(type); } catch(e) {}
+            // 2. Verify token if userId not found or as primary auth
+            if (token) {
+                try {
+                    const res = await fetch(`/api/verify-token/${token}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        userId = String(data.user_id);
+                        log(`Authenticated via Token. UserID: ${userId}`);
+                    }
+                } catch(e) { log("Token verification failed."); }
+            }
+
+            if (userId) {
+                window.userId = userId;
+                // If we don't have a token, we might need to get one or rely on userId
+                // For now, let's proceed to load the app
+                document.getElementById('authScreen').style.opacity = "0";
+                setTimeout(() => {
+                    document.getElementById('authScreen').style.display = 'none';
+                    document.getElementById('mainApp').style.display = 'block';
+                    loadUserAndProfile();
+                }, 500);
+            } else {
+                document.getElementById('auth-error').style.display = 'block';
+                document.querySelector('.spinner').style.display = 'none';
             }
         }
 
+        async function loadUserAndProfile() {
+            try {
+                // We use the global token or userId
+                user = await api("/api/user/me");
+                if (!user) throw new Error("Connection failed");
+
+                if (!user.profile_complete && user.role !== 'admin') {
+                    window.location.href = `/landing?token=${token}`;
+                    return;
+                }
+
+                await finalizeInit();
+                
+                // Keep-alive
+                setInterval(() => fetch('/ping').catch(() => {}), 240000);
+            } catch (e) {
+                tg.showAlert("Sanctuary unreachable. Please restart.");
+            }
+        }
+
+        async function api(path, options = {}) {
+            // Priority: token > nothing (should have token for backend auth)
+            const res = await fetch(`${path}${path.includes('?') ? '&' : '?'}_=${Date.now()}`, {
+                ...options,
+                headers: { 
+                    "Authorization": token, 
+                    "Content-Type": "application/json",
+                    ...(options.headers || {})
+                }
+            });
+            if (res.status === 401) { window.location.href = "/landing?token=" + token; return; }
+            if (!res.ok) throw new Error("API Error");
+            return await res.json();
+        }
 
         async function finalizeInit() {
             if (!user) return;
-            log("Populating UI elements...");
             document.getElementById("user-name").innerText = user.name || "Warrior";
             document.getElementById("user-avatar").innerText = (user.name || "W")[0];
             document.getElementById("profile-display-name").innerText = user.name || "Warrior";
@@ -418,27 +357,17 @@
             document.getElementById("profile-name").value = user.name || "";
             document.getElementById("profile-bio").value = user.bio || "";
             
-            if (user.role === 'admin') {
-                document.getElementById("admin-link").style.display = "block";
-            }
-            if (user.role === 'mentor' || user.role === 'admin') {
-                document.getElementById("mentor-create-session").style.display = "block";
-            }
+            if (user.role === 'admin') document.getElementById("admin-link").style.display = "block";
+            if (user.role === 'mentor' || user.role === 'admin') document.getElementById("mentor-create-session").style.display = "block";
             
-            // Background loads
-            loadChatList(); 
-            loadDashboard(); 
-            loadSessions();
+            loadChatList(); loadDashboard(); loadSessions();
         }
-
-        // --- Feature Modules (Unchanged logic, utilizing robust API) ---
 
         function showPage(pageId, navItem) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             if (navItem) navItem.classList.add('active');
-            safeHaptic('light');
         }
 
         async function loadDashboard() {
@@ -448,7 +377,7 @@
                     document.getElementById("verse-text").innerText = `"${verse.text}"`;
                     document.getElementById("verse-ref").innerText = verse.reference;
                 }
-            } catch(e) { log("Verse load failed."); }
+            } catch(e) {}
         }
 
         async function checkin(status) {
@@ -457,9 +386,8 @@
                 if (res.streak !== undefined) {
                     document.getElementById("streak").innerText = res.streak;
                     tg.showAlert(status === 'yes' ? "Praise God! Streak maintained." : "Tomorrow is a new day. Stay strong.");
-                    safeHaptic('heavy');
                 }
-            } catch(e) { tg.showAlert("Check-in failed. Please try again."); }
+            } catch(e) { tg.showAlert("Check-in failed."); }
         }
 
         async function saveReflection() {
@@ -467,8 +395,8 @@
             if (!input.value.trim()) return;
             try {
                 const res = await api("/api/reflection", { method: "POST", body: JSON.stringify({ reflection_text: input.value }) });
-                if (res.success) { tg.showAlert("Reflection saved."); input.value = ""; safeHaptic('success'); }
-            } catch(e) { log("Reflection save failed."); }
+                if (res.success) { tg.showAlert("Reflection saved."); input.value = ""; }
+            } catch(e) {}
         }
 
         async function loadChatList() {
@@ -514,7 +442,7 @@
                     }
                 }
                 lucide.createIcons();
-            } catch (e) { log("Chat list load failed."); }
+            } catch (e) {}
         }
 
         async function loadAvailableMentors() {
@@ -526,11 +454,11 @@
                         <p style="font-size:13px; color:var(--text-dim); margin-bottom:15px;">${escapeHtml(m.bio || "No bio")}</p>
                         <button class="btn-primary" onclick="requestMentor('${m.id}')">Request Mentorship</button>
                     </div>`).join("");
-            } catch(e) { log("Available mentors load failed."); }
+            } catch(e) {}
         }
 
-        async function requestMentor(id) { try { await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: id }) }); loadChatList(); safeHaptic('success'); } catch(e) {} }
-        async function respondMentorship(id, action) { try { await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: id, action }) }); loadChatList(); safeHaptic('success'); } catch(e) {} }
+        async function requestMentor(id) { try { await api("/api/mentorship/request", { method: "POST", body: JSON.stringify({ mentor_id: id }) }); loadChatList(); } catch(e) {} }
+        async function respondMentorship(id, action) { try { await api("/api/mentorship/respond", { method: "POST", body: JSON.stringify({ request_id: id, action }) }); loadChatList(); } catch(e) {} }
 
         window.openChat = async (id, name) => {
             currentChatId = id;
@@ -542,7 +470,6 @@
             await loadMessages(true);
             if (chatInterval) clearInterval(chatInterval);
             chatInterval = setInterval(() => loadMessages(false), 5000);
-            safeHaptic('light');
         };
 
         function closeChat() {
@@ -563,7 +490,7 @@
                         <div class="msg-info">${escapeHtml(m.sender_name)} • ${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
                     </div>`).join("");
                 if (scroll) container.scrollTop = container.scrollHeight;
-            } catch(e) { log("Messages load failed."); }
+            } catch(e) {}
         }
 
         async function sendMessage() {
@@ -571,13 +498,13 @@
             if (!input.value.trim() || !currentChatId) return;
             try {
                 const res = await api("/api/mentor/message", { method: "POST", body: JSON.stringify({ content: input.value, receiver_id: currentChatId }) });
-                if (res.success) { input.value = ""; loadMessages(true); safeHaptic('light'); }
-            } catch(e) { log("Message send failed."); }
+                if (res.success) { input.value = ""; loadMessages(true); }
+            } catch(e) {}
         }
 
         window.startPrivateVideoCall = () => {
             const room = `recovery-${[user.user_id.slice(-6), currentChatId.slice(-6)].sort().join('-')}`;
-            tg.openLink(`https://meet.jit.si/${room}`); safeHaptic('heavy');
+            tg.openLink(`https://meet.jit.si/${room}`);
         };
 
         async function loadSessions() {
@@ -595,14 +522,14 @@
                         <button class="btn-primary" onclick="joinSession(${s.id})">Join Session</button>
                     </div>`).join("");
                 lucide.createIcons();
-            } catch(e) { log("Sessions load failed."); }
+            } catch(e) {}
         }
 
-        async function deleteSession(id) { if (confirm("Delete session?")) { try { await api(`/api/sessions/${id}`, { method: "DELETE" }); loadSessions(); safeHaptic('heavy'); } catch(e) {} } }
+        async function deleteSession(id) { if (confirm("Delete session?")) { try { await api(`/api/sessions/${id}`, { method: "DELETE" }); loadSessions(); } catch(e) {} } }
         async function joinSession(id) { try { const res = await api(`/api/sessions/${id}/join`); if (res.jitsi_url) tg.openLink(res.jitsi_url); } catch(e) {} }
         function showCreateSession() {
             const title = prompt("Title:"), desc = prompt("Desc:"), time = prompt("Time (YYYY-MM-DD HH:MM):");
-            if (title && time) api("/api/sessions", { method: "POST", body: JSON.stringify({ title, description: desc, scheduled_time: time }) }).then(() => { loadSessions(); safeHaptic('success'); }).catch(e => tg.showAlert("Failed to create session."));
+            if (title && time) api("/api/sessions", { method: "POST", body: JSON.stringify({ title, description: desc, scheduled_time: time }) }).then(() => { loadSessions(); }).catch(e => tg.showAlert("Failed."));
         }
 
         async function updateProfile() {
@@ -610,11 +537,12 @@
             try {
                 const res = await api("/api/user/update", { method: "POST", body: JSON.stringify({ name, bio }) });
                 if (res.success) { tg.showAlert("Profile updated!"); user.name = name; user.bio = bio; finalizeInit(); }
-            } catch(e) { tg.showAlert("Failed to update profile."); }
+            } catch(e) { tg.showAlert("Failed."); }
         }
 
-        setInterval(loadSessions, 60000);
-        document.addEventListener('keypress', e => { if (e.key === "Enter" && !e.shiftKey && document.activeElement.id === "chat-input") { e.preventDefault(); sendMessage(); } });
+        function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+        init();
     </script>
 </body>
 </html>
