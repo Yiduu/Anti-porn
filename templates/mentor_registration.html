@@ -159,7 +159,7 @@
                 });
                 if (res.ok) {
                     tg.HapticFeedback.notificationOccurred('success');
-                    window.location.href = "/recovery?token=" + token;
+                    window.location.href = "/?token=" + token;
                 } else {
                     throw new Error();
                 }
