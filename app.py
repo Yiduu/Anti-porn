@@ -166,12 +166,7 @@ def send_telegram_notification(chat_id, text):
 @app.after_request
 def add_header(response):
     if response.mimetype == 'text/html':
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, post-check=0, pre-check=0, max-age=0'
-    elif response.mimetype == 'application/json':
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response
 
 @app.route("/ping", methods=['GET', 'HEAD'])
@@ -180,15 +175,15 @@ def ping():
 
 @app.route("/")
 def index():
-    """Minimal static loader - zero dependencies, bulletproof for mobile."""
+    """Minimal static loader - bulletproof for mobile."""
     return """
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover"><title>Loading</title><style>body{background:#050505;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FFD700;font-family:sans-serif;}</style></head>
-<body><div id="status">Initializing...</div>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover"><title>Loading</title><style>body{background:#0a0a0a;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FFD700;font-family:sans-serif;}</style></head>
+<body><div id="s">Connecting...</div>
 <script>
 (function(){
-  const el = document.getElementById('status');
+  const s = document.getElementById('s');
   let uid = null;
   if(window.Telegram?.WebApp){
     window.Telegram.WebApp.expand();
@@ -199,11 +194,11 @@ def index():
   if(!uid){
     const token = new URLSearchParams(location.search).get('token');
     if(token){
-      fetch('/api/verify-token/'+token)
+      fetch('/api/verify-token/'+token,{signal:AbortSignal.timeout(5000)})
         .then(r=>r.json())
-        .then(d=>{ if(d.success && d.user_id) window.location.href='/dashboard?user_id='+d.user_id; else el.innerText='Invalid token. Reopen from bot.'; })
-        .catch(()=>el.innerText='Network error. Check connection.');
-    } else { el.innerText='Missing token. Open via Telegram bot.'; }
+        .then(d=>{ if(d.success && d.user_id) window.location.href='/dashboard?user_id='+d.user_id; else s.innerText='Invalid session. Reopen bot.'; })
+        .catch(()=>s.innerText='Network error. Check connection.');
+    } else { s.innerText='Open from Telegram bot.'; }
   } else {
     window.location.href='/dashboard?user_id='+uid;
   }
