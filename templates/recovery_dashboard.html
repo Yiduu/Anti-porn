@@ -270,73 +270,58 @@
         function log(msg) { console.log(`[CRC-APP] ${new Date().toISOString()}: ${msg}`); }
 
         async function init() {
-            log("Initializing Sanctuary...");
+            log("Initializing Dashboard UI...");
             tg.ready();
             tg.expand();
             try { tg.disableVerticalSwipes(); } catch(e) {}
             lucide.createIcons();
 
-            // 1. If we have a token in URL, use it
-            if (token) {
-                log("Using URL token...");
-                await loadUserAndProfile();
+            const params = new URLSearchParams(window.location.search);
+            token = params.get('token');
+            window.userId = params.get('user_id');
+
+            if (!window.userId) {
+                log("No UserID found in URL. Redirecting to entry...");
+                window.location.href = "/";
                 return;
             }
 
-            // 2. If no token, try Telegram initData
-            if (tg.initData) {
-                log("No token found. Authenticating via Telegram...");
-                try {
-                    const response = await fetch('/api/verify-token/tg', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ initData: tg.initData })
-                    });
-                    const data = await response.json();
-                    if (data.success && data.token) {
-                        token = data.token;
-                        log("TG Auth success.");
-                        await loadUserAndProfile();
-                        return;
-                    }
-                } catch(e) { log("TG Auth request failed."); }
-            }
-
-            // 3. Fallback to login page if all else fails
-            log("Authentication failed. Redirecting to login...");
-            window.location.href = "/login";
+            log(`Dashboard active for User: ${window.userId}`);
+            await loadUserAndProfile();
         }
 
         async function loadUserAndProfile() {
             try {
-                // Show splash screen state
+                // Instantly show the loading state
                 document.getElementById('authScreen').style.display = 'flex';
                 document.getElementById('mainApp').style.display = 'none';
 
+                // Fetch user data - this is where the "heavy" work happens
                 user = await api("/api/user/me");
                 if (!user) throw new Error("Connection failed");
 
                 if (!user.profile_complete && user.role !== 'admin') {
+                    log("Profile incomplete. Redirecting...");
                     window.location.href = `/landing?token=${token}`;
                     return;
                 }
 
                 await finalizeInit();
                 
-                // Success! Show app
+                // Hide loader and show app
                 document.getElementById('authScreen').style.opacity = "0";
                 setTimeout(() => {
                     document.getElementById('authScreen').style.display = 'none';
                     document.getElementById('mainApp').style.display = 'block';
-                }, 500);
+                }, 400);
 
-                // Keep-alive
+                // Periodic heartbeat
                 setInterval(() => fetch('/ping').catch(() => {}), 240000);
             } catch (e) {
-                log("Load failed: " + e);
+                log("Dashboard load error: " + e);
                 document.getElementById('auth-error').style.display = 'block';
                 document.querySelector('.spinner').style.display = 'none';
-                document.getElementById('auth-error-msg').innerText = "Sanctuary connection failed. Please restart the app.";
+                document.getElementById('auth-error-msg').innerText = "Unable to reach the Sanctuary. Please check your signal and try again.";
             }
         }
 
