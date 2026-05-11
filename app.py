@@ -5,6 +5,7 @@ import requests
 import logging
 import uuid
 import threading
+import asyncio
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, redirect
@@ -575,12 +576,25 @@ async def set_persistent_menu_button(update: Update, context: ContextTypes.DEFAU
     await update.message.reply_text("✅ Menu button updated!")
 
 def run_bot():
-    if not TELEGRAM_TOKEN: return
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("setmenu", set_persistent_menu_button))
-    logger.info("✅ Bot starting...")
-    application.run_polling()
+    if not TELEGRAM_TOKEN: 
+        logger.error("❌ TELEGRAM_TOKEN not found.")
+        return
+    
+    try:
+        # Create a new event loop for this background thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("setmenu", set_persistent_menu_button))
+        
+        logger.info("✅ Bot thread starting polling (stop_signals=None)...")
+        # stop_signals=None is required because only the main thread can handle signals
+        application.run_polling(stop_signals=None, close_loop=False)
+    except Exception as e:
+        logger.error(f"❌ Bot thread crashed: {e}")
+
 
 # -------------------- Initialization --------------------
 
@@ -601,9 +615,10 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_upcoming_sessions, trigger="interval", minutes=1)
 scheduler.start()
 
-# Start bot in a background thread
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
+# Start bot in a background thread if not already running
+if not any(t.name == "BotThread" for t in threading.enumerate()):
+    bot_thread = threading.Thread(target=run_bot, name="BotThread", daemon=True)
+    bot_thread.start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False)
