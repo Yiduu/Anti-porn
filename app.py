@@ -6,14 +6,12 @@ from flask_cors import CORS
 from models import db, User, Message, Meeting
 from functools import wraps
 import uuid
-
-# Load environment variables
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
-# Render provides DATABASE_URL; Neon uses postgresql://
 database_url = os.environ.get('DATABASE_URL')
 if database_url and database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
@@ -60,7 +58,10 @@ def generate_jitsi_link(meeting_id):
 
 # ------------------- Create Tables & Default Users -------------------
 with app.app_context():
+    # Create tables (SQLAlchemy will handle use_alter for messages)
     db.create_all()
+    
+    # Ensure default admin and mentor
     if not User.query.filter_by(role='admin').first():
         admin = User(username='admin', email='admin@example.com', role='admin', full_name='System Admin')
         admin.set_password('admin123')
@@ -215,7 +216,6 @@ def get_unread_count():
 @mentor_required
 def create_meeting():
     data = request.json
-    user = User.query.get(session['user_id'])
     meeting = Meeting(
         mentor_id=session['user_id'],
         client_id=data.get('client_id'),
