@@ -1,541 +1,692 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Counseling Platform</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Counseling Bot – Mini App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-        .chat-container {
-            height: 400px;
-            overflow-y: auto;
-        }
+    :root {
+      --primary: #c9a84c;
+      --primary-rgb: 201, 168, 76;
+      --primary-dim: rgba(201, 168, 76, 0.15);
+      --bg-color: #0a0a0a;
+      --card-bg: rgba(26, 26, 26, 0.7);
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f0f0f0;
+      --text-dim: rgba(255, 255, 255, 0.5);
+      --font-family: 'Inter', sans-serif;
+      --radius: 12px;
+      --nav-h: 65px;
+    }
 
-        .meeting-frame {
-            width: 100%;
-            height: 500px;
-            border: none;
-        }
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-color);
+      background-image: radial-gradient(circle at 30% 20%, rgba(201,168,76,0.08) 0%, transparent 60%),
+                        radial-gradient(circle at 80% 70%, rgba(201,168,76,0.05) 0%, transparent 50%);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-bottom: calc(var(--nav-h) + 80px);
+    }
 
-        @media (max-width: 768px) {
-            .meeting-frame {
-                height: 400px;
-            }
-        }
-    </style>
+    canvas#particleCanvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .page { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
+    .page.active { display: block; }
+
+    .app-header {
+      text-align: center;
+      padding: 10px 16px;
+    }
+    .app-logo {
+      width: 130px;
+      height: auto;
+      max-width: 80%;
+      border-radius: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .app-title {
+      font-size: 1.6rem;
+      color: var(--primary);
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .app-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: var(--nav-h);
+      background: rgba(10, 10, 10, 0.85);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 1000;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    .nav-btn {
+      background: none; border: none;
+      color: var(--text-dim);
+      font-family: var(--font-family);
+      font-size: 0.75rem;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      cursor: pointer;
+      flex: 1;
+      padding: 8px 0;
+      transition: color 0.2s;
+    }
+    .nav-btn.active { color: var(--primary); }
+    .nav-icon { font-size: 1.4rem; }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .card-title {
+      font-size: 1.1rem;
+      color: var(--primary);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .card-sub {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    .input-field {
+      width: 100%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--text);
+      font-family: var(--font-family);
+      font-size: 0.9rem;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    .input-field:focus { border-color: var(--primary); }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:active { opacity: 0.8; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .chat-container {
+      height: 400px;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 12px;
+    }
+    .message-bubble {
+      margin: 8px 0;
+      display: flex;
+    }
+    .message-bubble.sent { justify-content: flex-end; }
+    .message-bubble.received { justify-content: flex-start; }
+    .bubble {
+      max-width: 70%;
+      padding: 8px 12px;
+      border-radius: 18px;
+      background: var(--primary-dim);
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .sent .bubble { background: var(--primary); color: #000; border: none; }
+
+    .meeting-card {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-left: 3px solid var(--primary);
+    }
+
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .mt-2 { margin-top: 8px; }
+    .mb-2 { margin-bottom: 8px; }
+    .text-dim { color: var(--text-dim); font-size: 0.8rem; }
+    .gold-text { color: var(--primary); }
+
+    .toast {
+      position: fixed; bottom: 85px; left: 50%; transform: translateX(-50%);
+      background: var(--primary); color: #000; padding: 10px 20px; border-radius: 20px;
+      font-size: 0.85rem; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+      z-index: 2000;
+    }
+    .toast.show { opacity: 1; }
+
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .role-badge {
+      background: var(--primary-dim);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.7rem;
+      display: inline-block;
+    }
+  </style>
 </head>
+<body>
 
-<body class="bg-gray-100">
-    <div id="app" class="max-w-4xl mx-auto p-4">
-        <!-- Loading -->
-        <div id="loading" class="text-center py-10">Loading...</div>
+<canvas id="particleCanvas"></canvas>
 
-        <!-- Auth Forms -->
-        <div id="auth-container" class="hidden">
-            <div class="bg-white rounded-lg shadow-md p-6 mb-4">
-                <h2 class="text-2xl font-bold mb-4">Login</h2>
-                <input type="text" id="login-username" placeholder="Username" class="w-full p-2 border rounded mb-2">
-                <input type="password" id="login-password" placeholder="Password"
-                    class="w-full p-2 border rounded mb-2">
-                <button onclick="login()"
-                    class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Login</button>
-                <p class="mt-4 text-center">Don't have an account? <button onclick="showRegister()"
-                        class="text-blue-500">Register</button></p>
-            </div>
-        </div>
+<div id="authScreen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+  <div class="spinner"></div>
+  <h2 style="margin-top:20px; color:var(--primary);">Loading...</h2>
+</div>
 
-        <div id="register-container" class="hidden">
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-2xl font-bold mb-4">Register</h2>
-                <input type="text" id="reg-username" placeholder="Username" class="w-full p-2 border rounded mb-2">
-                <input type="email" id="reg-email" placeholder="Email" class="w-full p-2 border rounded mb-2">
-                <input type="text" id="reg-fullname" placeholder="Full Name" class="w-full p-2 border rounded mb-2">
-                <input type="password" id="reg-password" placeholder="Password" class="w-full p-2 border rounded mb-2">
-                <select id="reg-role" class="w-full p-2 border rounded mb-2">
-                    <option value="user">User (Client)</option>
-                    <option value="mentor">Mentor</option>
-                </select>
-                <button onclick="register()"
-                    class="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600">Register</button>
-                <p class="mt-4 text-center"><button onclick="showLogin()" class="text-blue-500">Back to Login</button>
-                </p>
-            </div>
-        </div>
+<div id="mainApp" style="display:none;">
+  <header class="app-header">
+    <img src="/static/logo.png" class="app-logo" alt="Counseling Logo" onerror="this.style.display='none'">
+    <div class="app-title">Counseling Hub</div>
+    <div class="app-subtitle">Anonymous support • Professional mentors</div>
+  </header>
 
-        <!-- Main Dashboard (shown after login) -->
-        <div id="dashboard" class="hidden">
-            <!-- Navigation Tabs -->
-            <div class="bg-white rounded-t-lg shadow-md p-2 flex flex-wrap gap-2 border-b">
-                <button onclick="showTab('profile')" id="tab-profile" class="px-4 py-2 rounded">Profile</button>
-                <button onclick="showTab('dashboard-view')" id="tab-dashboard"
-                    class="px-4 py-2 rounded">Dashboard</button>
-                <button onclick="showTab('chat')" id="tab-chat" class="px-4 py-2 rounded">Chat</button>
-                <button onclick="showTab('meetings')" id="tab-meetings" class="px-4 py-2 rounded">Meetings</button>
-                <button id="admin-tab" onclick="showTab('admin')" class="hidden px-4 py-2 rounded bg-red-100">Admin
-                    Panel</button>
-                <button onclick="logout()" class="px-4 py-2 rounded bg-red-500 text-white">Logout</button>
-            </div>
-
-            <!-- Profile Tab -->
-            <div id="profile-tab" class="bg-white rounded-b-lg shadow-md p-6 hidden">
-                <h2 class="text-2xl font-bold mb-4">My Profile</h2>
-                <div id="profile-info"></div>
-                <div class="mt-4">
-                    <h3 class="font-bold">Edit Profile</h3>
-                    <input type="text" id="edit-fullname" placeholder="Full Name"
-                        class="w-full p-2 border rounded mb-2">
-                    <input type="email" id="edit-email" placeholder="Email" class="w-full p-2 border rounded mb-2">
-                    <button onclick="updateProfile()" class="bg-blue-500 text-white p-2 rounded">Update</button>
-                </div>
-            </div>
-
-            <!-- Dashboard Tab (Role-specific) -->
-            <div id="dashboard-tab" class="bg-white rounded-b-lg shadow-md p-6 hidden">
-                <div id="dashboard-content"></div>
-            </div>
-
-            <!-- Chat Tab -->
-            <div id="chat-tab" class="bg-white rounded-b-lg shadow-md p-6 hidden">
-                <div class="mb-4">
-                    <label>Chat with:</label>
-                    <select id="chat-partner-select" class="w-full p-2 border rounded" onchange="loadConversation()">
-                        <option value="">Select a person</option>
-                    </select>
-                </div>
-                <div id="chat-messages" class="chat-container border rounded p-4 bg-gray-50 mb-4"></div>
-                <div class="flex gap-2">
-                    <input type="text" id="message-input" placeholder="Type your message..."
-                        class="flex-1 p-2 border rounded">
-                    <button onclick="sendMessage()" class="bg-blue-500 text-white px-4 rounded">Send</button>
-                </div>
-            </div>
-
-            <!-- Meetings Tab -->
-            <div id="meetings-tab" class="bg-white rounded-b-lg shadow-md p-6 hidden">
-                <div id="meetings-list" class="mb-4"></div>
-                <div id="schedule-meeting-form" class="hidden border-t pt-4 mt-4">
-                    <h3 class="font-bold mb-2">Schedule New Meeting (Mentor only)</h3>
-                    <input type="text" id="meeting-title" placeholder="Title" class="w-full p-2 border rounded mb-2">
-                    <textarea id="meeting-desc" placeholder="Description"
-                        class="w-full p-2 border rounded mb-2"></textarea>
-                    <input type="datetime-local" id="meeting-time" class="w-full p-2 border rounded mb-2">
-                    <select id="meeting-type" class="w-full p-2 border rounded mb-2">
-                        <option value="global">Global Meeting (all clients)</option>
-                        <option value="personal">Personal Meeting with specific client</option>
-                    </select>
-                    <select id="personal-client-select" class="w-full p-2 border rounded mb-2 hidden">
-                        <option value="">Select Client</option>
-                    </select>
-                    <button onclick="scheduleMeeting()" class="bg-green-500 text-white p-2 rounded">Schedule
-                        Meeting</button>
-                </div>
-                <button id="show-schedule-btn" onclick="toggleScheduleForm()"
-                    class="mt-4 bg-purple-500 text-white px-4 py-2 rounded">Schedule New Meeting</button>
-            </div>
-
-            <!-- Admin Tab -->
-            <div id="admin-tab-content" class="bg-white rounded-b-lg shadow-md p-6 hidden">
-                <h2 class="text-2xl font-bold mb-4">Admin Control Panel</h2>
-                <div id="admin-users-list"></div>
-                <div class="mt-4 border-t pt-4">
-                    <h3 class="font-bold">Assign Mentor to User</h3>
-                    <select id="admin-user-select" class="w-full p-2 border rounded mb-2"></select>
-                    <select id="admin-mentor-select" class="w-full p-2 border rounded mb-2"></select>
-                    <button onclick="assignMentor()" class="bg-blue-500 text-white p-2 rounded">Assign</button>
-                </div>
-            </div>
-        </div>
+  <!-- ==================== PAGES ==================== -->
+  <!-- Login / Register wrapper (will be shown when not logged in) -->
+  <div id="authPage" class="page active">
+    <div class="card" id="loginForm">
+      <div class="card-title">Welcome Back</div>
+      <input type="text" id="loginUsername" class="input-field" placeholder="Username">
+      <input type="password" id="loginPassword" class="input-field" placeholder="Password">
+      <button class="btn-primary" id="loginBtn">Login</button>
+      <p class="text-dim" style="text-align:center; margin-top:16px;">Don't have an account? <span class="gold-text" style="cursor:pointer;" onclick="showRegisterForm()">Register</span></p>
     </div>
+    <div class="card" id="registerForm" style="display:none;">
+      <div class="card-title">Create Account</div>
+      <input type="text" id="regUsername" class="input-field" placeholder="Username">
+      <input type="email" id="regEmail" class="input-field" placeholder="Email">
+      <input type="text" id="regFullname" class="input-field" placeholder="Full Name">
+      <input type="password" id="regPassword" class="input-field" placeholder="Password">
+      <select id="regRole" class="input-field">
+        <option value="user">Client (Seeking help)</option>
+        <option value="mentor">Mentor (Professional)</option>
+      </select>
+      <button class="btn-primary" id="registerBtn">Register</button>
+      <p class="text-dim" style="text-align:center; margin-top:16px;"><span class="gold-text" style="cursor:pointer;" onclick="showLoginForm()">← Back to Login</span></p>
+    </div>
+  </div>
 
-    <script>
-        let currentUser = null;
-        let currentChatPartner = null;
-        let messagePollInterval = null;
+  <!-- Main Dashboard (after login) -->
+  <div id="dashboardPage" class="page">
+    <div id="dashboardContent"></div>
+  </div>
 
-        // Axios defaults
-        axios.defaults.baseURL = window.location.origin;
-        axios.defaults.withCredentials = true;
+  <!-- Profile Page -->
+  <div id="profilePage" class="page">
+    <div class="card">
+      <div class="card-title">My Profile</div>
+      <div id="profileInfo"></div>
+      <div class="mt-2">
+        <label class="text-dim">Full Name</label>
+        <input type="text" id="editFullname" class="input-field" style="margin-top:4px;">
+        <label class="text-dim">Email</label>
+        <input type="email" id="editEmail" class="input-field" style="margin-top:4px;">
+        <button class="btn-primary" id="updateProfileBtn">Update Profile</button>
+      </div>
+    </div>
+  </div>
 
-        // Initialize
-        async function init() {
-            document.getElementById('loading').classList.add('hidden');
-            await checkAuth();
-        }
+  <!-- Chat Page -->
+  <div id="chatPage" class="page">
+    <div class="card">
+      <div class="flex-between">
+        <div class="card-title">Chat</div>
+        <select id="chatPartnerSelect" class="input-field" style="width:auto; padding:6px; margin:0;"></select>
+      </div>
+      <div id="chatMessages" class="chat-container"></div>
+      <div class="flex-between" style="gap:8px;">
+        <input type="text" id="messageInput" class="input-field" style="margin:0; flex:1;" placeholder="Type a message...">
+        <button class="btn-primary" id="sendMsgBtn" style="width:auto; padding:10px 16px;">Send</button>
+      </div>
+    </div>
+  </div>
 
-        async function checkAuth() {
-            try {
-                const res = await axios.get('/api/me');
-                currentUser = res.data;
-                showDashboard();
-                loadDashboardContent();
-                startMessagePolling();
-            } catch (err) {
-                showLogin();
-            }
-        }
+  <!-- Meetings Page -->
+  <div id="meetingsPage" class="page">
+    <div class="card">
+      <div class="card-title">Upcoming Meetings</div>
+      <div id="meetingsList"></div>
+      <div id="scheduleForm" style="display:none;" class="mt-2">
+        <input type="text" id="meetingTitle" class="input-field" placeholder="Title">
+        <textarea id="meetingDesc" class="input-field" rows="2" placeholder="Description"></textarea>
+        <input type="datetime-local" id="meetingTime" class="input-field">
+        <select id="meetingType" class="input-field">
+          <option value="global">Global Meeting (all clients)</option>
+          <option value="personal">Personal Meeting with specific client</option>
+        </select>
+        <select id="personalClientSelect" class="input-field" style="display:none;"></select>
+        <button class="btn-primary" id="scheduleMeetingBtn">Schedule Meeting</button>
+      </div>
+      <button id="showScheduleBtn" class="btn-ghost" style="margin-top:12px; width:100%;">+ New Meeting</button>
+    </div>
+  </div>
 
-        function showLogin() {
-            document.getElementById('auth-container').classList.remove('hidden');
-            document.getElementById('register-container').classList.add('hidden');
-            document.getElementById('dashboard').classList.add('hidden');
-        }
+  <!-- Admin Panel Page -->
+  <div id="adminPage" class="page">
+    <div class="card">
+      <div class="card-title">Admin Dashboard</div>
+      <div id="adminContent"></div>
+    </div>
+  </div>
 
-        function showRegister() {
-            document.getElementById('auth-container').classList.add('hidden');
-            document.getElementById('register-container').classList.remove('hidden');
-        }
+  <!-- Bottom Navigation -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-page="dashboard"><span class="nav-icon">🏠</span>Home</button>
+    <button class="nav-btn" data-page="profile"><span class="nav-icon">👤</span>Profile</button>
+    <button class="nav-btn" data-page="chat"><span class="nav-icon">💬</span>Chat</button>
+    <button class="nav-btn" data-page="meetings"><span class="nav-icon">📅</span>Meetings</button>
+    <button class="nav-btn" data-page="admin" style="display:none;"><span class="nav-icon">🛠️</span>Admin</button>
+  </nav>
+</div>
 
-        async function login() {
-            const username = document.getElementById('login-username').value;
-            const password = document.getElementById('login-password').value;
-            try {
-                const res = await axios.post('/api/login', { username, password });
-                currentUser = res.data.user;
-                showDashboard();
-                loadDashboardContent();
-                startMessagePolling();
-            } catch (err) {
-                alert('Login failed: ' + (err.response?.data?.error || 'Unknown error'));
-            }
-        }
+<div id="toast" class="toast"></div>
 
-        async function register() {
-            const data = {
-                username: document.getElementById('reg-username').value,
-                email: document.getElementById('reg-email').value,
-                full_name: document.getElementById('reg-fullname').value,
-                password: document.getElementById('reg-password').value,
-                role: document.getElementById('reg-role').value
-            };
-            try {
-                await axios.post('/api/register', data);
-                alert('Registration successful! Please login.');
-                showLogin();
-            } catch (err) {
-                alert('Registration failed: ' + (err.response?.data?.error || 'Unknown error'));
-            }
-        }
+<script>
+  // -------------------- GLOBALS --------------------
+  let currentUser = null;
+  let currentChatPartner = null;
+  let messagePollInterval = null;
+  let allUsers = [];
 
-        async function logout() {
-            await axios.post('/api/logout');
-            if (messagePollInterval) clearInterval(messagePollInterval);
-            currentUser = null;
-            showLogin();
-        }
+  const api = axios.create({ baseURL: window.location.origin, withCredentials: true });
 
-        function showDashboard() {
-            document.getElementById('auth-container').classList.add('hidden');
-            document.getElementById('register-container').classList.add('hidden');
-            document.getElementById('dashboard').classList.remove('hidden');
+  // Helper
+  function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
 
-            // Show/hide admin tab
-            if (currentUser.role === 'admin') {
-                document.getElementById('admin-tab').classList.remove('hidden');
-            } else {
-                document.getElementById('admin-tab').classList.add('hidden');
-            }
+  // -------------------- AUTH & PAGE SWITCH --------------------
+  async function checkAuth() {
+    try {
+      const res = await api.get('/api/me');
+      currentUser = res.data;
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('mainApp').style.display = 'block';
+      document.getElementById('authPage').classList.remove('active');
+      document.getElementById('dashboardPage').classList.add('active');
+      loadDashboard();
+      startMessagePolling();
+      setupNav();
+      if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
+    } catch(e) {
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('mainApp').style.display = 'block';
+      document.getElementById('authPage').classList.add('active');
+    }
+  }
 
-            showTab('dashboard-view');
-        }
+  function setupNav() {
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.onclick = () => {
+        const page = btn.dataset.page;
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(page + 'Page').classList.add('active');
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (page === 'dashboard') loadDashboard();
+        if (page === 'profile') loadProfile();
+        if (page === 'chat') loadChatPartners();
+        if (page === 'meetings') loadMeetings();
+        if (page === 'admin' && currentUser.role === 'admin') loadAdminPanel();
+      };
+    });
+  }
 
-        function showTab(tabName) {
-            const tabs = ['profile', 'dashboard-view', 'chat', 'meetings', 'admin'];
-            tabs.forEach(t => {
-                const el = document.getElementById(`${t}-tab`);
-                if (el) el.classList.add('hidden');
-            });
+  function showRegisterForm() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('registerForm').style.display = 'block';
+  }
+  function showLoginForm() {
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('registerForm').style.display = 'none';
+  }
 
-            if (tabName === 'profile') document.getElementById('profile-tab').classList.remove('hidden');
-            if (tabName === 'dashboard-view') document.getElementById('dashboard-tab').classList.remove('hidden');
-            if (tabName === 'chat') {
-                document.getElementById('chat-tab').classList.remove('hidden');
-                loadChatPartners();
-            }
-            if (tabName === 'meetings') {
-                document.getElementById('meetings-tab').classList.remove('hidden');
-                loadMeetings();
-            }
-            if (tabName === 'admin') {
-                if (currentUser.role === 'admin') {
-                    document.getElementById('admin-tab-content').classList.remove('hidden');
-                    loadAdminPanel();
-                }
-            }
+  // -------------------- LOGIN / REGISTER --------------------
+  document.getElementById('loginBtn').onclick = async () => {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    try {
+      const res = await api.post('/api/login', { username, password });
+      currentUser = res.data.user;
+      toast(`Welcome ${currentUser.full_name || currentUser.username}`);
+      document.getElementById('authPage').classList.remove('active');
+      document.getElementById('dashboardPage').classList.add('active');
+      setupNav();
+      loadDashboard();
+      startMessagePolling();
+      if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
+    } catch(e) { toast('Login failed: ' + (e.response?.data?.error || 'error')); }
+  };
 
-            // Update button styles
-            const btns = ['profile', 'dashboard', 'chat', 'meetings', 'admin'];
-            btns.forEach(btn => {
-                const btnEl = document.getElementById(`tab-${btn}`);
-                if (btnEl) btnEl.classList.remove('bg-blue-500', 'text-white');
-            });
-            const activeBtn = document.getElementById(`tab-${tabName === 'dashboard-view' ? 'dashboard' : (tabName === 'admin' ? 'admin' : tabName)}`);
-            if (activeBtn) activeBtn.classList.add('bg-blue-500', 'text-white');
-        }
+  document.getElementById('registerBtn').onclick = async () => {
+    const data = {
+      username: document.getElementById('regUsername').value,
+      email: document.getElementById('regEmail').value,
+      full_name: document.getElementById('regFullname').value,
+      password: document.getElementById('regPassword').value,
+      role: document.getElementById('regRole').value
+    };
+    try {
+      await api.post('/api/register', data);
+      toast('Registration successful! Please login.');
+      showLoginForm();
+    } catch(e) { toast('Registration failed: ' + (e.response?.data?.error)); }
+  };
 
-        async function loadDashboardContent() {
-            const container = document.getElementById('dashboard-content');
-            if (currentUser.role === 'user') {
-                const mentorId = currentUser.assigned_mentor_id;
-                let mentorName = 'No mentor assigned yet';
-                if (mentorId) {
-                    try {
-                        const res = await axios.get(`/api/users/${mentorId}`);
-                        mentorName = res.data.full_name || res.data.username;
-                    } catch (e) { }
-                }
-                container.innerHTML = `
-                    <h2 class="text-xl font-bold">Welcome ${currentUser.full_name || currentUser.username} 👋</h2>
-                    <p>Role: Client</p>
-                    <p>Assigned Mentor: ${mentorName}</p>
-                    <div class="mt-4">
-                        <button onclick="startInstantMeeting()" class="bg-green-500 text-white px-4 py-2 rounded">Start Instant Video Call with Mentor</button>
-                    </div>
-                `;
-            } else if (currentUser.role === 'mentor') {
-                const clientsRes = await axios.get('/api/mentor/clients');
-                const clients = clientsRes.data;
-                container.innerHTML = `
-                    <h2 class="text-xl font-bold">Mentor Dashboard</h2>
-                    <p>Welcome ${currentUser.full_name || currentUser.username}</p>
-                    <p>Assigned Clients: ${clients.length}</p>
-                    <div class="mt-4">
-                        <ul class="list-disc pl-5">
-                            ${clients.map(c => `<li>${c.full_name || c.username} (${c.email})</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
-            } else if (currentUser.role === 'admin') {
-                container.innerHTML = `<h2 class="text-xl font-bold">Admin Dashboard</h2><p>Use Admin Panel to manage users.</p>`;
-            }
-        }
+  // -------------------- DASHBOARD (role-based) --------------------
+  async function loadDashboard() {
+    const container = document.getElementById('dashboardContent');
+    if (currentUser.role === 'user') {
+      let mentorName = 'Not assigned';
+      if (currentUser.assigned_mentor_id) {
+        try {
+          const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
+          mentorName = res.data.full_name || res.data.username;
+        } catch(e) {}
+      }
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-title">Welcome, ${currentUser.full_name || currentUser.username}</div>
+          <p>Your assigned mentor: <strong class="gold-text">${mentorName}</strong></p>
+          <button class="btn-primary" id="instantCallBtn" style="margin-top:12px;">📹 Start Instant Video Call</button>
+        </div>
+      `;
+      document.getElementById('instantCallBtn')?.addEventListener('click', startInstantMeeting);
+    } 
+    else if (currentUser.role === 'mentor') {
+      const clientsRes = await api.get('/api/mentor/clients');
+      const clients = clientsRes.data;
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-title">Mentor Dashboard</div>
+          <p>You have <strong>${clients.length}</strong> assigned clients.</p>
+          <div class="mt-2">${clients.map(c => `<div class="role-badge">${c.full_name || c.username}</div>`).join(' ')}</div>
+          <button class="btn-ghost" id="viewMeetingsBtn" style="margin-top:12px;">View Meetings</button>
+        </div>
+      `;
+      document.getElementById('viewMeetingsBtn')?.addEventListener('click', () => document.querySelector('[data-page="meetings"]').click());
+    } 
+    else if (currentUser.role === 'admin') {
+      container.innerHTML = `<div class="card"><div class="card-title">Admin Panel</div><p>Use the Admin tab to manage users and mentors.</p></div>`;
+    }
+  }
 
-        async function loadChatPartners() {
-            const select = document.getElementById('chat-partner-select');
-            select.innerHTML = '<option value="">Select a person</option>';
+  async function startInstantMeeting() {
+    if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
+      try {
+        const res = await api.post(`/api/meetings/instant/${currentUser.assigned_mentor_id}`);
+        window.open(res.data.meeting_link, '_blank');
+      } catch(e) { toast('Could not start meeting'); }
+    } else toast('No mentor assigned');
+  }
 
-            if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
-                const res = await axios.get(`/api/users/${currentUser.assigned_mentor_id}`);
-                const mentor = res.data;
-                select.innerHTML += `<option value="${mentor.id}">Mentor: ${mentor.full_name || mentor.username}</option>`;
-            } else if (currentUser.role === 'mentor') {
-                const res = await axios.get('/api/mentor/clients');
-                const clients = res.data;
-                clients.forEach(client => {
-                    select.innerHTML += `<option value="${client.id}">${client.full_name || client.username} (Client)</option>`;
-                });
-            }
-        }
+  // -------------------- PROFILE --------------------
+  async function loadProfile() {
+    const infoDiv = document.getElementById('profileInfo');
+    infoDiv.innerHTML = `<p><strong>Username:</strong> ${currentUser.username}</p><p><strong>Email:</strong> ${currentUser.email}</p><p><strong>Role:</strong> ${currentUser.role}</p>`;
+    document.getElementById('editFullname').value = currentUser.full_name || '';
+    document.getElementById('editEmail').value = currentUser.email || '';
+  }
+  document.getElementById('updateProfileBtn').onclick = async () => {
+    const full_name = document.getElementById('editFullname').value;
+    const email = document.getElementById('editEmail').value;
+    try {
+      await api.put(`/api/users/${currentUser.id}`, { full_name, email });
+      toast('Profile updated');
+      currentUser.full_name = full_name;
+      currentUser.email = email;
+      loadProfile();
+    } catch(e) { toast('Update failed'); }
+  };
 
-        async function loadConversation() {
-            const partnerId = document.getElementById('chat-partner-select').value;
-            if (!partnerId) return;
-            currentChatPartner = partnerId;
-            const res = await axios.get(`/api/messages/conversation/${partnerId}`);
-            const messages = res.data;
-            const container = document.getElementById('chat-messages');
-            container.innerHTML = messages.map(msg => `
-                <div class="mb-2 ${msg.sender_id === currentUser.id ? 'text-right' : 'text-left'}">
-                    <span class="inline-block px-3 py-1 rounded ${msg.sender_id === currentUser.id ? 'bg-blue-500 text-white' : 'bg-gray-300'}">
-                        ${msg.content}
-                    </span>
-                    <div class="text-xs text-gray-500">${new Date(msg.timestamp).toLocaleTimeString()}</div>
-                </div>
-            `).join('');
-            container.scrollTop = container.scrollHeight;
-        }
+  // -------------------- CHAT --------------------
+  async function loadChatPartners() {
+    const select = document.getElementById('chatPartnerSelect');
+    select.innerHTML = '<option value="">Select a person</option>';
+    if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
+      const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
+      select.innerHTML += `<option value="${res.data.id}">Mentor: ${res.data.full_name || res.data.username}</option>`;
+    } else if (currentUser.role === 'mentor') {
+      const res = await api.get('/api/mentor/clients');
+      res.data.forEach(c => {
+        select.innerHTML += `<option value="${c.id}">${c.full_name || c.username} (Client)</option>`;
+      });
+    }
+    select.onchange = () => {
+      currentChatPartner = select.value;
+      if (currentChatPartner) loadConversation();
+    };
+  }
 
-        async function sendMessage() {
-            if (!currentChatPartner) {
-                alert('Select a chat partner first');
-                return;
-            }
-            const content = document.getElementById('message-input').value;
-            if (!content.trim()) return;
-            await axios.post('/api/messages/send', {
-                recipient_id: parseInt(currentChatPartner),
-                content: content
-            });
-            document.getElementById('message-input').value = '';
-            loadConversation();
-        }
+  async function loadConversation() {
+    if (!currentChatPartner) return;
+    const res = await api.get(`/api/messages/conversation/${currentChatPartner}`);
+    const messages = res.data;
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = messages.map(m => `
+      <div class="message-bubble ${m.sender_id === currentUser.id ? 'sent' : 'received'}">
+        <div class="bubble">${escapeHtml(m.content)}<div class="text-dim" style="font-size:0.7rem; margin-top:2px;">${new Date(m.timestamp).toLocaleTimeString()}</div></div>
+      </div>
+    `).join('');
+    container.scrollTop = container.scrollHeight;
+  }
 
-        async function loadMeetings() {
-            const res = await axios.get('/api/meetings');
-            const meetings = res.data;
-            const container = document.getElementById('meetings-list');
-            if (meetings.length === 0) {
-                container.innerHTML = '<p>No upcoming meetings.</p>';
-            } else {
-                container.innerHTML = meetings.map(m => `
-                    <div class="border rounded p-3 mb-2">
-                        <div class="font-bold">${m.title}</div>
-                        <div>${m.description || 'No description'}</div>
-                        <div>Start: ${new Date(m.start_time).toLocaleString()}</div>
-                        <div>Type: ${m.is_global ? '🌍 Global' : '👤 Personal'}</div>
-                        ${m.meeting_link ? `<a href="${m.meeting_link}" target="_blank" class="inline-block mt-2 bg-blue-500 text-white px-3 py-1 rounded">Join Meeting</a>` : ''}
-                    </div>
-                `).join('');
-            }
+  document.getElementById('sendMsgBtn').onclick = async () => {
+    if (!currentChatPartner) return toast('Select a chat partner');
+    const content = document.getElementById('messageInput').value.trim();
+    if (!content) return;
+    await api.post('/api/messages/send', { recipient_id: parseInt(currentChatPartner), content });
+    document.getElementById('messageInput').value = '';
+    loadConversation();
+  };
 
-            // Show schedule form for mentors
-            if (currentUser.role === 'mentor') {
-                document.getElementById('schedule-meeting-form').classList.add('hidden');
-                document.getElementById('show-schedule-btn').classList.remove('hidden');
-                // Load clients for personal meeting
-                const clientsRes = await axios.get('/api/mentor/clients');
-                const clients = clientsRes.data;
-                const clientSelect = document.getElementById('personal-client-select');
-                clientSelect.innerHTML = '<option value="">Select Client</option>';
-                clients.forEach(c => {
-                    clientSelect.innerHTML += `<option value="${c.id}">${c.full_name || c.username}</option>`;
-                });
-            } else {
-                document.getElementById('schedule-meeting-form').classList.add('hidden');
-                document.getElementById('show-schedule-btn').classList.add('hidden');
-            }
-        }
+  function startMessagePolling() {
+    if (messagePollInterval) clearInterval(messagePollInterval);
+    messagePollInterval = setInterval(() => {
+      if (currentChatPartner && document.getElementById('chatPage').classList.contains('active')) loadConversation();
+    }, 3000);
+  }
 
-        function toggleScheduleForm() {
-            const form = document.getElementById('schedule-meeting-form');
-            form.classList.toggle('hidden');
-        }
+  // -------------------- MEETINGS --------------------
+  async function loadMeetings() {
+    const res = await api.get('/api/meetings');
+    const meetings = res.data;
+    const container = document.getElementById('meetingsList');
+    if (meetings.length === 0) container.innerHTML = '<div class="text-dim">No upcoming meetings</div>';
+    else {
+      container.innerHTML = meetings.map(m => `
+        <div class="meeting-card">
+          <div class="flex-between"><strong>${escapeHtml(m.title)}</strong> <span class="role-badge">${m.is_global ? 'Global' : 'Personal'}</span></div>
+          <div class="text-dim">${m.description || ''}</div>
+          <div>📅 ${new Date(m.start_time).toLocaleString()}</div>
+          ${m.meeting_link ? `<a href="${m.meeting_link}" target="_blank" class="btn-ghost" style="display:inline-block; margin-top:8px;">Join Meeting</a>` : ''}
+        </div>
+      `).join('');
+    }
 
-        async function scheduleMeeting() {
-            const title = document.getElementById('meeting-title').value;
-            const desc = document.getElementById('meeting-desc').value;
-            const startTime = document.getElementById('meeting-time').value;
-            const type = document.getElementById('meeting-type').value;
+    if (currentUser.role === 'mentor') {
+      const clientsRes = await api.get('/api/mentor/clients');
+      const clientSelect = document.getElementById('personalClientSelect');
+      clientSelect.innerHTML = '<option value="">Select Client</option>' + clientsRes.data.map(c => `<option value="${c.id}">${c.full_name || c.username}</option>`).join('');
+      document.getElementById('showScheduleBtn').style.display = 'block';
+    } else {
+      document.getElementById('showScheduleBtn').style.display = 'none';
+      document.getElementById('scheduleForm').style.display = 'none';
+    }
+  }
 
-            if (!title || !startTime) {
-                alert('Please fill title and time');
-                return;
-            }
+  document.getElementById('showScheduleBtn').onclick = () => {
+    const form = document.getElementById('scheduleForm');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  };
+  document.getElementById('meetingType').onchange = function() {
+    const personalSelect = document.getElementById('personalClientSelect');
+    personalSelect.style.display = this.value === 'personal' ? 'block' : 'none';
+  };
+  document.getElementById('scheduleMeetingBtn').onclick = async () => {
+    const title = document.getElementById('meetingTitle').value;
+    const desc = document.getElementById('meetingDesc').value;
+    const startTime = document.getElementById('meetingTime').value;
+    const type = document.getElementById('meetingType').value;
+    if (!title || !startTime) return toast('Fill title and time');
+    const payload = {
+      title, description: desc,
+      start_time: new Date(startTime).toISOString(),
+      is_global: type === 'global'
+    };
+    if (type === 'personal') {
+      const clientId = document.getElementById('personalClientSelect').value;
+      if (!clientId) return toast('Select a client');
+      payload.client_id = parseInt(clientId);
+    }
+    await api.post('/api/meetings', payload);
+    toast('Meeting scheduled');
+    document.getElementById('scheduleForm').style.display = 'none';
+    loadMeetings();
+  };
 
-            const data = {
-                title: title,
-                description: desc,
-                start_time: new Date(startTime).toISOString(),
-                is_global: type === 'global'
-            };
+  // -------------------- ADMIN PANEL --------------------
+  async function loadAdminPanel() {
+    const usersRes = await api.get('/api/admin/users');
+    allUsers = usersRes.data;
+    const mentors = allUsers.filter(u => u.role === 'mentor');
+    const clients = allUsers.filter(u => u.role === 'user');
+    const container = document.getElementById('adminContent');
+    container.innerHTML = `
+      <div class="card-title">User Management</div>
+      <table style="width:100%; font-size:0.8rem;">
+        <thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${allUsers.map(u => `
+            <tr>
+              <td>${u.id}</td><td>${escapeHtml(u.username)}</td><td>${u.role}</td>
+              <td>${u.role !== 'admin' ? `<button class="btn-ghost" onclick="deleteUser(${u.id})">Delete</button>` : ''}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="mt-2"><strong>Assign Mentor</strong><br>
+        <select id="adminUserSelect" class="input-field" style="margin-top:4px;">${clients.map(c => `<option value="${c.id}">${c.username}</option>`).join('')}</select>
+        <select id="adminMentorSelect" class="input-field">${mentors.map(m => `<option value="${m.id}">${m.username}</option>`).join('')}</select>
+        <button class="btn-primary" id="assignMentorBtn">Assign</button>
+      </div>
+    `;
+    document.getElementById('assignMentorBtn').onclick = async () => {
+      const userId = document.getElementById('adminUserSelect').value;
+      const mentorId = document.getElementById('adminMentorSelect').value;
+      if (!userId || !mentorId) return toast('Select both');
+      await api.post('/api/admin/assign', { user_id: parseInt(userId), mentor_id: parseInt(mentorId) });
+      toast('Mentor assigned');
+      loadAdminPanel();
+    };
+  }
 
-            if (type === 'personal') {
-                const clientId = document.getElementById('personal-client-select').value;
-                if (!clientId) {
-                    alert('Please select a client for personal meeting');
-                    return;
-                }
-                data.client_id = parseInt(clientId);
-            }
+  window.deleteUser = async (userId) => {
+    if (confirm('Delete this user?')) {
+      await api.delete(`/api/admin/users/${userId}`);
+      toast('User deleted');
+      loadAdminPanel();
+    }
+  };
 
-            await axios.post('/api/meetings', data);
-            alert('Meeting scheduled successfully!');
-            document.getElementById('meeting-title').value = '';
-            document.getElementById('meeting-desc').value = '';
-            document.getElementById('meeting-time').value = '';
-            loadMeetings();
-            toggleScheduleForm();
-        }
+  // Helper
+  function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
-        async function startInstantMeeting() {
-            if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
-                const res = await axios.post(`/api/meetings/instant/${currentUser.assigned_mentor_id}`);
-                const link = res.data.meeting_link;
-                window.open(link, '_blank');
-            } else if (currentUser.role === 'mentor') {
-                alert('From mentor dashboard, please schedule or join meetings with clients via the Meetings tab.');
-            } else {
-                alert('No mentor assigned');
-            }
-        }
+  // Particle background (adapted from provided bot)
+  function initParticles() {
+    const canvas = document.getElementById('particleCanvas');
+    const ctx = canvas.getContext('2d');
+    let w = canvas.width = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+    const particles = [];
+    const rgb = getComputedStyle(document.documentElement).getPropertyValue('--primary-rgb').trim() || '201, 168, 76';
+    for(let i=0; i<40; i++) {
+      particles.push({
+        x: Math.random()*w, y: Math.random()*h, r: Math.random()*2+0.5,
+        vx: (Math.random()-0.5)*0.2, vy: (Math.random()-0.5)*0.2, a: Math.random()*0.2+0.1
+      });
+    }
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if(p.x < 0) p.x = w; if(p.x > w) p.x = 0;
+        if(p.y < 0) p.y = h; if(p.y > h) p.y = 0;
+        ctx.fillStyle = `rgba(${rgb}, ${p.a})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+    window.addEventListener('resize', () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; });
+  }
 
-        async function loadAdminPanel() {
-            const usersRes = await axios.get('/api/admin/users');
-            const users = usersRes.data;
-            const mentors = users.filter(u => u.role === 'mentor');
-            const clients = users.filter(u => u.role === 'user');
-
-            const container = document.getElementById('admin-users-list');
-            container.innerHTML = `
-                <h3 class="font-bold mb-2">All Users</h3>
-                <table class="w-full border">
-                    <thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Mentor ID</th><th>Action</th></tr></thead>
-                    <tbody>
-                        ${users.map(u => `
-                            <tr>
-                                <td>${u.id}</td><td>${u.username}</td><td>${u.role}</td><td>${u.assigned_mentor_id || '-'}</td>
-                                <td>${u.role !== 'admin' ? `<button onclick="deleteUser(${u.id})" class="text-red-500">Delete</button>` : ''}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-
-            const userSelect = document.getElementById('admin-user-select');
-            const mentorSelect = document.getElementById('admin-mentor-select');
-            userSelect.innerHTML = '<option value="">Select User</option>' + clients.map(c => `<option value="${c.id}">${c.username} (Client)</option>`).join('');
-            mentorSelect.innerHTML = '<option value="">Select Mentor</option>' + mentors.map(m => `<option value="${m.id}">${m.username}</option>`).join('');
-        }
-
-        async function assignMentor() {
-            const userId = document.getElementById('admin-user-select').value;
-            const mentorId = document.getElementById('admin-mentor-select').value;
-            if (!userId || !mentorId) {
-                alert('Select both user and mentor');
-                return;
-            }
-            await axios.post('/api/admin/assign', { user_id: parseInt(userId), mentor_id: parseInt(mentorId) });
-            alert('Mentor assigned successfully');
-            loadAdminPanel();
-            loadDashboardContent();
-        }
-
-        async function deleteUser(userId) {
-            if (confirm('Delete this user?')) {
-                await axios.delete(`/api/admin/users/${userId}`);
-                alert('User deleted');
-                loadAdminPanel();
-            }
-        }
-
-        async function updateProfile() {
-            const fullName = document.getElementById('edit-fullname').value;
-            const email = document.getElementById('edit-email').value;
-            await axios.put(`/api/users/${currentUser.id}`, { full_name: fullName, email: email });
-            alert('Profile updated');
-            await checkAuth();
-        }
-
-        function startMessagePolling() {
-            if (messagePollInterval) clearInterval(messagePollInterval);
-            messagePollInterval = setInterval(async () => {
-                if (currentUser && document.getElementById('chat-tab') && !document.getElementById('chat-tab').classList.contains('hidden') && currentChatPartner) {
-                    loadConversation();
-                }
-            }, 3000);
-        }
-
-        // Fill profile data when tab shown
-        setInterval(() => {
-            if (currentUser && document.getElementById('profile-tab') && !document.getElementById('profile-tab').classList.contains('hidden')) {
-                document.getElementById('profile-info').innerHTML = `
-                    <p><strong>Username:</strong> ${currentUser.username}</p>
-                    <p><strong>Email:</strong> ${currentUser.email}</p>
-                    <p><strong>Full Name:</strong> ${currentUser.full_name || 'Not set'}</p>
-                    <p><strong>Role:</strong> ${currentUser.role}</p>
-                `;
-                document.getElementById('edit-fullname').value = currentUser.full_name || '';
-                document.getElementById('edit-email').value = currentUser.email || '';
-            }
-        }, 1000);
-
-        init();
-    </script>
+  // Start everything
+  initParticles();
+  checkAuth();
+</script>
 </body>
-
 </html>
