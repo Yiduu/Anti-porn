@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key')
 database_url = os.environ.get('DATABASE_URL')
 if database_url and database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
@@ -21,46 +21,45 @@ CORS(app, supports_credentials=True)
 
 db.init_app(app)
 
-# ------------------- Helper Functions -------------------
+# ---------- Helpers ----------
 def login_required(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
         return f(*args, **kwargs)
-    return decorated_function
+    return decorated
 
 def admin_required(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
         user = User.query.get(session['user_id'])
         if not user or user.role != 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
+            return jsonify({'error': 'Admin required'}), 403
         return f(*args, **kwargs)
-    return decorated_function
+    return decorated
 
 def mentor_required(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
         user = User.query.get(session['user_id'])
         if not user or user.role not in ['mentor', 'admin']:
-            return jsonify({'error': 'Mentor access required'}), 403
+            return jsonify({'error': 'Mentor required'}), 403
         return f(*args, **kwargs)
-    return decorated_function
+    return decorated
 
 def generate_jitsi_link(meeting_id):
-    room_name = f"counseling_{meeting_id}_{uuid.uuid4().hex[:8]}"
-    return f"https://meet.jit.si/{room_name}"
+    return f"https://meet.jit.si/counseling_{meeting_id}_{uuid.uuid4().hex[:8]}"
 
-# ------------------- Create Tables & Default Users -------------------
+# ---------- Create tables & default users ----------
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(role='admin').first():
-        admin = User(username='admin', email='admin@example.com', role='admin', full_name='System Admin')
+        admin = User(username='admin', email='admin@example.com', role='admin', full_name='Admin')
         admin.set_password('admin123')
         db.session.add(admin)
         mentor = User(username='mentor_john', email='john@example.com', role='mentor', full_name='John Smith')
@@ -69,10 +68,7 @@ with app.app_context():
         db.session.commit()
         print("✅ Default admin (admin/admin123) and mentor (mentor_john/mentor123) created.")
 
-# ------------------- API ROUTES -------------------
-@app.route('/api/health')
-def health():
-    return jsonify({'status': 'ok'})
+# ---------- API routes ----------
 @app.route('/')
 def index():
     return redirect('/miniapp')
@@ -80,33 +76,25 @@ def index():
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
-    role = data.get('role', 'user')
-    full_name = data.get('full_name')
-    
-    if User.query.filter_by(username=username).first():
-        return jsonify({'error': 'Username already exists'}), 400
-    if User.query.filter_by(email=email).first():
-        return jsonify({'error': 'Email already exists'}), 400
-    
-    user = User(username=username, email=email, role=role, full_name=full_name)
-    user.set_password(password)
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'Username exists'}), 400
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'Email exists'}), 400
+    user = User(username=data['username'], email=data['email'],
+                role=data.get('role','user'), full_name=data.get('full_name'))
+    user.set_password(data['password'])
     db.session.add(user)
     db.session.commit()
-    return jsonify({'message': 'Registration successful', 'user_id': user.id})
+    return jsonify({'message': 'Registered', 'user_id': user.id})
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    user = User.query.filter_by(username=username).first()
-    if not user or not user.check_password(password):
+    user = User.query.filter_by(username=data['username']).first()
+    if not user or not user.check_password(data['password']):
         return jsonify({'error': 'Invalid credentials'}), 401
     session['user_id'] = user.id
-    return jsonify({'message': 'Login successful', 'user': user.to_dict()})
+    return jsonify({'message': 'OK', 'user': user.to_dict()})
 
 @app.route('/api/logout', methods=['POST'])
 @login_required
@@ -116,21 +104,19 @@ def logout():
 
 @app.route('/api/me', methods=['GET'])
 @login_required
-def get_current_user():
-    user = User.query.get(session['user_id'])
-    return jsonify(user.to_dict())
+def me():
+    return jsonify(User.query.get(session['user_id']).to_dict())
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 @login_required
 def get_user(user_id):
-    user = User.query.get_or_404(user_id)
-    return jsonify(user.to_dict())
+    return jsonify(User.query.get_or_404(user_id).to_dict())
 
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @login_required
 def update_user(user_id):
     if session['user_id'] != user_id:
-        return jsonify({'error': 'Permission denied'}), 403
+        return jsonify({'error': 'Forbidden'}), 403
     user = User.query.get_or_404(user_id)
     data = request.json
     if 'full_name' in data:
@@ -144,21 +130,18 @@ def update_user(user_id):
 @admin_required
 def assign_mentor():
     data = request.json
-    user_id = data.get('user_id')
-    mentor_id = data.get('mentor_id')
-    user = User.query.get_or_404(user_id)
-    mentor = User.query.get_or_404(mentor_id)
+    user = User.query.get_or_404(data['user_id'])
+    mentor = User.query.get_or_404(data['mentor_id'])
     if mentor.role != 'mentor':
-        return jsonify({'error': 'Selected user is not a mentor'}), 400
-    user.assigned_mentor_id = mentor_id
+        return jsonify({'error': 'Not a mentor'}), 400
+    user.assigned_mentor_id = mentor.id
     db.session.commit()
-    return jsonify({'message': 'Mentor assigned successfully'})
+    return jsonify({'message': 'Assigned'})
 
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
-def list_all_users():
-    users = User.query.all()
-    return jsonify([u.to_dict() for u in users])
+def list_users():
+    return jsonify([u.to_dict() for u in User.query.all()])
 
 @app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
 @admin_required
@@ -168,51 +151,38 @@ def delete_user(user_id):
         return jsonify({'error': 'Cannot delete admin'}), 403
     db.session.delete(user)
     db.session.commit()
-    return jsonify({'message': 'User deleted'})
+    return jsonify({'message': 'Deleted'})
 
 @app.route('/api/messages/send', methods=['POST'])
 @login_required
 def send_message():
     data = request.json
-    recipient_id = data.get('recipient_id')
-    content = data.get('content')
-    sender_id = session['user_id']
-    sender = User.query.get(sender_id)
-    recipient = User.query.get(recipient_id)
-    
-    if sender.role == 'user' and sender.assigned_mentor_id != recipient_id:
-        return jsonify({'error': 'You can only chat with your assigned mentor'}), 403
+    sender = User.query.get(session['user_id'])
+    recipient = User.query.get(data['recipient_id'])
+    if sender.role == 'user' and sender.assigned_mentor_id != recipient.id:
+        return jsonify({'error': 'Can only chat with your mentor'}), 403
     if sender.role == 'mentor':
-        client = User.query.get(recipient_id)
-        if not client or client.assigned_mentor_id != sender_id:
-            return jsonify({'error': 'You can only chat with your assigned clients'}), 403
-    
-    message = Message(sender_id=sender_id, recipient_id=recipient_id, content=content)
-    db.session.add(message)
+        client = User.query.get(data['recipient_id'])
+        if not client or client.assigned_mentor_id != sender.id:
+            return jsonify({'error': 'Can only chat with your clients'}), 403
+    msg = Message(sender_id=sender.id, recipient_id=recipient.id, content=data['content'])
+    db.session.add(msg)
     db.session.commit()
-    return jsonify(message.to_dict())
+    return jsonify(msg.to_dict())
 
-@app.route('/api/messages/conversation/<int:other_user_id>', methods=['GET'])
+@app.route('/api/messages/conversation/<int:other_id>', methods=['GET'])
 @login_required
-def get_conversation(other_user_id):
+def conversation(other_id):
     user_id = session['user_id']
-    messages = Message.query.filter(
-        ((Message.sender_id == user_id) & (Message.recipient_id == other_user_id)) |
-        ((Message.sender_id == other_user_id) & (Message.recipient_id == user_id))
+    msgs = Message.query.filter(
+        ((Message.sender_id == user_id) & (Message.recipient_id == other_id)) |
+        ((Message.sender_id == other_id) & (Message.recipient_id == user_id))
     ).order_by(Message.timestamp).all()
-    
-    for msg in messages:
-        if msg.recipient_id == user_id and not msg.is_read:
-            msg.is_read = True
+    for m in msgs:
+        if m.recipient_id == user_id and not m.is_read:
+            m.is_read = True
     db.session.commit()
-    return jsonify([m.to_dict() for m in messages])
-
-@app.route('/api/messages/unread', methods=['GET'])
-@login_required
-def get_unread_count():
-    user_id = session['user_id']
-    count = Message.query.filter_by(recipient_id=user_id, is_read=False).count()
-    return jsonify({'unread_count': count})
+    return jsonify([m.to_dict() for m in msgs])
 
 @app.route('/api/meetings', methods=['POST'])
 @mentor_required
@@ -238,15 +208,12 @@ def create_meeting():
 def get_meetings():
     user = User.query.get(session['user_id'])
     if user.role == 'mentor':
-        meetings = Meeting.query.filter_by(mentor_id=user.id).order_by(Meeting.start_time).all()
+        q = Meeting.query.filter_by(mentor_id=user.id)
     elif user.role == 'user':
-        meetings = Meeting.query.filter(
-            (Meeting.is_global == True) |
-            ((Meeting.client_id == user.id) & (Meeting.is_global == False))
-        ).order_by(Meeting.start_time).all()
+        q = Meeting.query.filter((Meeting.is_global == True) | ((Meeting.client_id == user.id) & (Meeting.is_global == False)))
     else:
-        meetings = Meeting.query.order_by(Meeting.start_time).all()
-    return jsonify([m.to_dict() for m in meetings])
+        q = Meeting.query
+    return jsonify([m.to_dict() for m in q.order_by(Meeting.start_time).all()])
 
 @app.route('/api/meetings/instant/<int:mentor_id>', methods=['POST'])
 @login_required
@@ -254,50 +221,47 @@ def instant_meeting(mentor_id):
     user = User.query.get(session['user_id'])
     mentor = User.query.get_or_404(mentor_id)
     if user.role == 'user' and user.assigned_mentor_id != mentor_id:
-        return jsonify({'error': 'This is not your assigned mentor'}), 403
-    
+        return jsonify({'error': 'Not your mentor'}), 403
     meeting = Meeting(
         mentor_id=mentor_id,
         client_id=user.id if user.role == 'user' else None,
         is_global=False,
-        title=f"Instant Meeting between {user.full_name} and {mentor.full_name}",
-        start_time=datetime.utcnow(),
-        duration_minutes=30
+        title=f"Instant meeting {user.full_name} – {mentor.full_name}",
+        start_time=datetime.utcnow()
     )
     db.session.add(meeting)
     db.session.commit()
     meeting.meeting_link = generate_jitsi_link(meeting.id)
     db.session.commit()
-    return jsonify({'meeting_link': meeting.meeting_link, 'meeting_id': meeting.id})
+    return jsonify({'meeting_link': meeting.meeting_link})
 
 @app.route('/api/mentor/clients', methods=['GET'])
 @login_required
-def get_mentor_clients():
+def mentor_clients():
     user = User.query.get(session['user_id'])
-    if user.role not in ['mentor', 'admin']:
-        return jsonify({'error': 'Access denied'}), 403
-    if user.role == 'admin':
+    if user.role == 'mentor':
+        clients = User.query.filter_by(assigned_mentor_id=user.id).all()
+    elif user.role == 'admin':
         clients = User.query.filter_by(role='user').all()
     else:
-        clients = User.query.filter_by(assigned_mentor_id=user.id).all()
+        return jsonify({'error': 'Forbidden'}), 403
     return jsonify([c.to_dict() for c in clients])
 
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html')
 
-# ------------------- Startup: Flask in background, Bot in main -------------------
+# ---------- Run Flask in background, bot in main ----------
 def run_flask():
-    """Run the Flask app in a background thread (for Render health checks & Mini App)"""
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
-    # Start Flask in a daemon thread (so it doesn't block the bot)
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print("🌐 Flask server started in background thread")
-
-    # Now start the Telegram bot in the MAIN thread (where signals are allowed)
+    print("🌐 Flask started in background.")
+    # Give Flask a moment to bind
+    import time
+    time.sleep(2)
     from telegram_bot import main as bot_main
     bot_main()
