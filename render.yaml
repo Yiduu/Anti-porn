@@ -1,15 +1,22 @@
 services:
   - type: web
-    name: recovery-app
+    name: counseling-bot
     runtime: python
-    buildCommand: pip install -r requirements.txt && chmod +x start.sh
-    startCommand: ./start.sh
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     envVars:
       - key: DATABASE_URL
+        fromDatabase:
+          name: counseling-db
+          property: connectionString
+      - key: TELEGRAM_BOT_TOKEN
         sync: false
-      - key: TELEGRAM_TOKEN
-        sync: false
+      - key: WEBAPP_URL
+        value: https://counseling-bot.onrender.com/miniapp
       - key: SECRET_KEY
-        sync: false
-      - key: RENDER_URL
-        sync: false
+        generateValue: true
+
+databases:
+  - name: counseling-db
+    databaseName: counseling
+    user: counseling_user
