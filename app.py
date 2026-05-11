@@ -70,6 +70,9 @@ with app.app_context():
         print("✅ Default admin (admin/admin123) and mentor (mentor_john/mentor123) created.")
 
 # ------------------- API ROUTES -------------------
+@app.route('/api/health')
+def health():
+    return jsonify({'status': 'ok'})
 @app.route('/')
 def index():
     return redirect('/miniapp')
