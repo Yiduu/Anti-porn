@@ -283,6 +283,9 @@ def get_mentor_clients():
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html')
+@app.route('/')
+def index():
+    return redirect('/miniapp')
 
 # ------------------- Telegram Bot Thread -------------------
 def run_telegram_bot():
