@@ -1,4 +1,5 @@
 import os
+import asyncio
 from telegram import Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -23,8 +24,14 @@ def main():
     if not TOKEN:
         print("❌ TELEGRAM_BOT_TOKEN not set. Bot will not run.")
         return
+    
+    # Create a new event loop for this thread (required for Python 3.11+)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    
     print("🚀 Telegram bot is polling...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
