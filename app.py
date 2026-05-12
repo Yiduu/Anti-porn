@@ -161,7 +161,7 @@ def logout():
 
 @app.route('/api/me', methods=['GET'])
 @login_required
-def get_current_user():
+def api_get_current_user():
     return jsonify(request.current_user.to_dict())
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
