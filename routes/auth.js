@@ -36,32 +36,29 @@ module.exports = function authRoutes(supabase, requireAuth) {
 
   // POST /api/auth/register
   router.post('/register', requireAuth, async (req, res) => {
-    const { id: telegram_id, username } = req.telegramUser;
-    const { sex, age_range, education_level, chat_id } = req.body;
+    const { id: telegram_id } = req.telegramUser;
+    const { sex, age_range, education_level, nickname, chat_id } = req.body;
 
     // Validate
-    if (!sex || !age_range || !education_level) {
+    if (!sex || !age_range || !education_level || !nickname) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     // Check if already registered
-    const { data: existing } = await supabase
-      .from('users')
-      .select('telegram_id')
-      .eq('telegram_id', telegram_id)
-      .single();
-
+    const { data: existing } = await supabase.from('users').select('telegram_id').eq('telegram_id', telegram_id).single();
     if (existing) return res.status(409).json({ error: 'Already registered' });
 
-    // Generate unique anonymous_id
-    let anonymous_id;
+    // Nickname uniqueness check
+    const { data: nickCollision } = await supabase.from('users').select('anonymous_id').eq('anonymous_id', nickname).single();
+    if (nickCollision) return res.status(409).json({ error: 'Nickname already taken', nickname_taken: true });
+
+    // Generate/Validate unique anonymous_id
+    let anonymous_id = nickname;
     let attempts = 0;
-    do {
-      anonymous_id = generateAnonId();
-      const { data: collision } = await supabase.from('users').select('anonymous_id').eq('anonymous_id', anonymous_id).single();
-      if (!collision) break;
-      attempts++;
-    } while (attempts < 10);
+    
+    // Double check for race condition
+    const { data: collision } = await supabase.from('users').select('anonymous_id').eq('anonymous_id', anonymous_id).single();
+    if (collision) return res.status(409).json({ error: 'Nickname taken', nickname_taken: true });
 
     const { data: user, error } = await supabase
       .from('users')
@@ -71,7 +68,7 @@ module.exports = function authRoutes(supabase, requireAuth) {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Create default settings
+    // Create default settings with nickname as display_name
     await supabase.from('user_settings').insert({ telegram_id, display_name: anonymous_id });
 
     res.status(201).json({ user });
