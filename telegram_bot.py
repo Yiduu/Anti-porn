@@ -6,7 +6,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 load_dotenv()
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-WEBAPP_URL = os.environ.get('WEBAPP_URL', 'https://your-app.onrender.com/miniapp')
+RAW_URL = os.environ.get('WEBAPP_URL', 'https://your-app.onrender.com')
+# Ensure the URL doesn't end with a slash, then add /miniapp
+WEBAPP_URL = f"{RAW_URL.rstrip('/')}/miniapp"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[KeyboardButton("Open Counseling App 🎯", web_app=WebAppInfo(url=WEBAPP_URL))]]
