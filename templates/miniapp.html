@@ -416,6 +416,17 @@
     <div id="toast" class="toast"></div>
 
     <script>
+        // Global error handler for debugging mobile issues
+        window.onerror = function(msg, url, line, col, error) {
+            const errDiv = document.getElementById('loadingMsg');
+            if (errDiv) errDiv.innerHTML = `<span style="color:#ff4444;">JS Error: ${msg}<br>Line: ${line}</span>`;
+            console.error(error);
+            return false;
+        };
+        window.onunhandledrejection = function(event) {
+            console.error('Unhandled rejection:', event.reason);
+        };
+
         let currentUser = null;
         let currentChatPartner = null;
         let messagePollInterval = null;
