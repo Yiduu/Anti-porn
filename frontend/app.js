@@ -389,13 +389,13 @@ async function loadRequests() {
   }
 }
 
-async function respondToRequest(requestId, status) {
+async function respondToRequest(requestId, action) {
   try {
     await apiFetch(`/api/mentors/request/${requestId}`, {
       method: 'PATCH',
-      body: { status }
+      body: { action }
     });
-    showToast(`Request ${status}`, 'success');
+    showToast(`Request ${action}`, 'success');
     loadRequests();
   } catch (e) {
     showToast(e.message, 'error');
