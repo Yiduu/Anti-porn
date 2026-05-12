@@ -262,11 +262,29 @@
   <!-- ── Page: Mentorship Requests ──────────────────────────────── -->
   <div id="page-requests" class="page">
     <div class="app-header">
-      <h2>Requests</h2>
+      <h2 data-i18n="Requests">Requests</h2>
     </div>
     <div class="page-content">
-      <p class="text-sm text-dim mb-12">Pending mentorship applications from users.</p>
+      <p class="text-sm text-dim mb-12" data-i18n="Pending mentorship applications from users.">Pending mentorship applications from users.</p>
       <div id="requestsList" style="display:flex;flex-direction:column;gap:10px">
+        <div class="loading-spinner" style="margin:40px auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Page: My Mentees (Mentor only) ────────────────────────── -->
+  <div id="page-my-mentees" class="page">
+    <div class="app-header">
+      <h2 data-i18n="My Mentees">My Mentees</h2>
+    </div>
+    <div class="page-content">
+      <div id="menteeStats" class="card mb-16" style="background:var(--gold-dim);border:1px solid var(--gold)">
+        <div class="flex justify-between items-center">
+          <span class="text-sm" data-i18n="Active Clients">Active Clients</span>
+          <span id="activeMenteeCount" class="stat-num" style="font-size:1.5rem">0</span>
+        </div>
+      </div>
+      <div id="menteesList" style="display:flex;flex-direction:column;gap:12px">
         <div class="loading-spinner" style="margin:40px auto"></div>
       </div>
     </div>
@@ -281,51 +299,52 @@
     </div>
     <div class="page-content">
       <!-- Identity -->
-      <div class="section-title">Identity</div>
+      <div class="section-title" data-i18n="Identity">Identity</div>
       <div class="card mb-16">
         <div class="flex justify-between items-center mb-8">
-          <span class="text-sm text-dim">Anonymous ID</span>
+          <span class="text-sm text-dim" data-i18n="Anonymous ID">Anonymous ID</span>
           <span id="userAnonId" class="chip chip-gold"></span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm text-dim">Role</span>
+          <span class="text-sm text-dim" data-i18n="Role">Role</span>
           <span id="userRole" class="chip chip-blue"></span>
         </div>
       </div>
 
       <!-- Display -->
-      <div class="section-title">Display</div>
+      <div class="section-title" data-i18n="Display">Display</div>
       <div class="card mb-16">
         <div class="form-group">
-          <label class="form-label">Display Name (still anonymous)</label>
+          <label class="form-label" data-i18n="Display Name (still anonymous)">Display Name (still anonymous)</label>
           <input id="settingDisplayName" class="form-control" placeholder="Custom nickname…" />
         </div>
         <div class="form-group">
-          <label class="form-label">Timezone</label>
+          <label class="form-label" data-i18n="Timezone">Timezone</label>
           <select id="settingTimezone" class="form-control">
-            <option value="UTC">UTC</option>
-            <option value="America/New_York">Eastern (ET)</option>
-            <option value="America/Chicago">Central (CT)</option>
-            <option value="America/Denver">Mountain (MT)</option>
-            <option value="America/Los_Angeles">Pacific (PT)</option>
-            <option value="Europe/London">London (GMT)</option>
-            <option value="Africa/Addis_Ababa">Addis Ababa (EAT)</option>
+            <!-- options ... -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="Language">Language</label>
+          <select id="settingLanguage" class="form-control" onchange="changeLanguage(this.value)">
+            <option value="en">English</option>
+            <option value="am">Amharic (አማርኛ)</option>
           </select>
         </div>
         <div class="mt-8 flex items-center gap-8">
-          <span class="text-sm text-dim">Theme</span>
-          <button class="btn btn-ghost btn-sm" onclick="toggleTheme()">Toggle Dark/Light</button>
+          <span class="text-sm text-dim" data-i18n="Theme">Theme</span>
+          <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" data-i18n="Toggle Dark/Light">Toggle Dark/Light</button>
         </div>
       </div>
 
       <!-- Notifications -->
-      <div class="section-title">Notifications</div>
+      <div class="section-title" data-i18n="Notifications">Notifications</div>
       <div class="card mb-16">
-        <div class="toggle-wrap"><span>New Messages</span><div id="toggleMessages" class="toggle on" onclick="toggleNotif('toggleMessages')"></div></div>
+        <div class="toggle-wrap"><span data-i18n="New Messages">New Messages</span><div id="toggleMessages" class="toggle on" onclick="toggleNotif('toggleMessages')"></div></div>
         <div class="divider"></div>
-        <div class="toggle-wrap"><span>Session Reminders</span><div id="toggleSessions" class="toggle on" onclick="toggleNotif('toggleSessions')"></div></div>
+        <div class="toggle-wrap"><span data-i18n="Session Reminders">Session Reminders</span><div id="toggleSessions" class="toggle on" onclick="toggleNotif('toggleSessions')"></div></div>
         <div class="divider"></div>
-        <div class="toggle-wrap"><span>Daily Bible Verse</span><div id="toggleVerse" class="toggle on" onclick="toggleNotif('toggleVerse')"></div></div>
+        <div class="toggle-wrap"><span data-i18n="Daily Bible Verse">Daily Bible Verse</span><div id="toggleVerse" class="toggle on" onclick="toggleNotif('toggleVerse')"></div></div>
       </div>
 
       <!-- Mentor Settings -->
@@ -353,28 +372,30 @@
   <nav class="bottom-nav">
     <div id="nav-dashboard" class="nav-item active" onclick="navigate('dashboard')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      Home
+      <span data-i18n="Home">Home</span>
     </div>
     <div id="nav-mentors" class="nav-item" onclick="navigate('mentors')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Mentors
+      <span data-i18n="Mentors">Mentors</span>
     </div>
     <div id="nav-sessions" class="nav-item" onclick="navigate('sessions')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-      Sessions
+      <span data-i18n="Sessions">Sessions</span>
     </div>
-    <div id="nav-chat" class="nav-item" onclick="navigate('chat')" style="position:relative">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       <span id="chatBadge" class="nav-badge" style="display:none">0</span>
-      Chat
+      <span data-i18n="Chat">Chat</span>
+    </div>
+    <div id="nav-my-mentees" class="nav-item" onclick="navigate('my-mentees')" style="display:none">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span data-i18n="Mentees">Mentees</span>
     </div>
     <div id="nav-requests" class="nav-item hidden" onclick="navigate('requests')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
-      Requests
+      <span data-i18n="Requests">Requests</span>
     </div>
     <div id="nav-settings" class="nav-item" onclick="navigate('settings')">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Settings
+      <span data-i18n="Settings">Settings</span>
     </div>
   </nav>
 </div><!-- /#app -->
