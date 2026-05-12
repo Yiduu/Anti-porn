@@ -7,8 +7,9 @@ load_dotenv()
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 RAW_URL = os.environ.get('WEBAPP_URL', 'https://your-app.onrender.com')
-# Ensure the URL doesn't end with a slash, then add /miniapp
-WEBAPP_URL = f"{RAW_URL.rstrip('/')}/miniapp"
+# Remove /miniapp if it already exists to avoid double paths, then add it
+base_url = RAW_URL.replace('/miniapp', '').rstrip('/')
+WEBAPP_URL = f"{base_url}/miniapp"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[KeyboardButton("Open Counseling App 🎯", web_app=WebAppInfo(url=WEBAPP_URL))]]
