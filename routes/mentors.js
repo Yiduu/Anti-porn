@@ -1,0 +1,96 @@
+'use strict';
+
+const express = require('express');
+
+module.exports = function mentorRoutes(supabase, requireAuth) {
+  const router = express.Router();
+
+  // GET /api/mentors – list available mentors
+  router.get('/', requireAuth, async (req, res) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('telegram_id, anonymous_id, user_settings(bio, specialization, max_mentees, display_name)')
+      .eq('role', 'mentor')
+      .eq('is_banned', false);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Enrich with mentee counts
+    const enriched = await Promise.all((data || []).map(async (mentor) => {
+      const { count } = await supabase.from('mentorship_assignments').select('id', { count: 'exact', head: true }).eq('mentor_id', mentor.telegram_id).eq('is_active', true);
+      return { ...mentor, mentee_count: count || 0 };
+    }));
+
+    res.json(enriched);
+  });
+
+  // POST /api/mentors/request – request mentorship
+  router.post('/request', requireAuth, async (req, res) => {
+    const { id: user_id } = req.telegramUser;
+    const { mentor_id, message } = req.body;
+    if (!mentor_id) return res.status(400).json({ error: 'mentor_id required' });
+
+    // Check user has no active mentor
+    const { data: activeAssign } = await supabase.from('mentorship_assignments').select('id').eq('user_id', user_id).eq('is_active', true).single();
+    if (activeAssign) return res.status(409).json({ error: 'You already have an active mentor' });
+
+    // Check no pending request to same mentor
+    const { data: pending } = await supabase.from('mentorship_requests').select('id').eq('user_id', user_id).eq('mentor_id', mentor_id).eq('status', 'pending').single();
+    if (pending) return res.status(409).json({ error: 'Request already pending' });
+
+    const { data, error } = await supabase.from('mentorship_requests').insert({ user_id, mentor_id, message }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json(data);
+  });
+
+  // GET /api/mentors/my-requests – mentor sees incoming requests
+  router.get('/my-requests', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { data, error } = await supabase
+      .from('mentorship_requests')
+      .select('*, user:user_id(anonymous_id, user_settings(display_name))')
+      .eq('mentor_id', mentor_id)
+      .eq('status', 'pending');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
+  // PATCH /api/mentors/request/:id – accept/reject
+  router.patch('/request/:id', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { action } = req.body; // 'accepted' | 'rejected'
+
+    if (!['accepted','rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
+
+    const { data: reqData, error: reqErr } = await supabase
+      .from('mentorship_requests')
+      .update({ status: action, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .eq('mentor_id', mentor_id)
+      .select()
+      .single();
+
+    if (reqErr) return res.status(500).json({ error: reqErr.message });
+
+    // If accepted → create assignment
+    if (action === 'accepted') {
+      await supabase.from('mentorship_assignments').insert({ user_id: reqData.user_id, mentor_id });
+    }
+
+    res.json(reqData);
+  });
+
+  // GET /api/mentors/my-mentees – mentor's assigned mentees
+  router.get('/my-mentees', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { data, error } = await supabase
+      .from('mentorship_assignments')
+      .select('*, user:user_id(telegram_id, anonymous_id, last_active, user_settings(display_name))')
+      .eq('mentor_id', mentor_id)
+      .eq('is_active', true);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
+  return router;
+};
