@@ -31,7 +31,7 @@ module.exports = function authRoutes(supabase, requireAuth) {
     // Update last_active
     await supabase.from('users').update({ last_active: new Date().toISOString() }).eq('telegram_id', telegram_id);
 
-    res.json({ registered: true, user: data });
+    res.json({ registered: true, user: data, admin_id: process.env.ADMIN_TELEGRAM_ID });
   });
 
   // POST /api/auth/register
