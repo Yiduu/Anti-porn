@@ -455,18 +455,64 @@ async function joinSession(session_id) {
   }
 }
 
-async function createSession(is_group = false) {
+async function createSession(is_group = false, mentee_id = null) {
   try {
-    const title = is_group ? prompt('Session title (or leave blank):') : undefined;
+    if (!is_group && !mentee_id && currentUser?.role === 'mentor') {
+      const res = await apiFetch('/api/users/chat-partner');
+      if (res.type === 'single') {
+        mentee_id = res.partner.telegram_id;
+      } else if (res.type === 'multiple') {
+        openMenteeSelectModal();
+        return;
+      } else {
+        showToast('No active mentees to start a session with.', 'error');
+        return;
+      }
+    }
+
+    const title = is_group ? prompt('Session title (or leave blank):') : 'Private session';
     const data = await apiFetch('/api/sessions/create', {
       method: 'POST',
-      body: { is_group, title, scheduled_at: new Date().toISOString() }
+      body: { is_group, title, scheduled_at: new Date().toISOString(), mentee_id }
     });
-    showToast('Session created!', 'success');
+    
+    showToast(is_group ? 'Group session created!' : 'Private session created!', 'success');
     launchJitsi(data.room_name, data.room_password, currentUser.anonymous_id, data.jitsi_token);
   } catch (e) {
     showToast(e.message, 'error');
   }
+}
+
+function openMenteeSelectModal() {
+  const modal = $('menteeSelectModal');
+  const list = $('menteeSelectList');
+  if (!modal || !list) return;
+  list.innerHTML = '<div class="loading-spinner" style="margin:20px auto"></div>';
+  modal.classList.add('open');
+  
+  apiFetch('/api/mentors/my-mentees').then(mentees => {
+    if (!mentees.length) {
+      list.innerHTML = '<p class="text-center py-20">No active mentees.</p>';
+      return;
+    }
+    list.innerHTML = mentees.map(m => `
+      <button class="btn btn-outline btn-full" style="text-align:left;justify-content:flex-start;display:block;height:auto;padding:12px" onclick="startPrivateSession('${m.user.telegram_id}')">
+        <div class="font-bold">${escapeHtml(m.user.anonymous_id)}</div>
+        <div class="text-xs text-dim">Joined ${new Date(m.assigned_at).toLocaleDateString()}</div>
+      </button>
+    `).join('');
+  }).catch(e => {
+    list.innerHTML = `<p class="text-danger">${e.message}</p>`;
+  });
+}
+
+function closeMenteeSelectModal() {
+  $('menteeSelectModal')?.classList.remove('open');
+}
+
+function startPrivateSession(menteeId) {
+  closeMenteeSelectModal();
+  createSession(false, menteeId);
 }
 
 function launchJitsi(roomName, roomPassword, displayName, token) {
@@ -512,22 +558,57 @@ function launchJitsi(roomName, roomPassword, displayName, token) {
 window.chatState = {};
 
 async function loadChat() {
-  // Load assigned mentor or mentee
   try {
-    const assignment = await apiFetch('/api/users/my-mentor');
-    if (!assignment) {
-      $('chatMessages').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>No active mentorship.<br>Request a mentor first.</span></div>';
+    const targetId = window.pendingChatPartner;
+    window.pendingChatPartner = null;
+
+    const res = await apiFetch('/api/users/chat-partner');
+    const selector = $('chatPartnerSelect');
+    
+    if (res.type === 'none') {
+      $('chatMessages').innerHTML = '<div class="empty-state"><span>No active mentorship.</span></div>';
       $('chatInputRow').style.display = 'none';
+      $('chatWith').style.display = 'block';
+      $('chatWith').textContent = 'Messages';
+      selector.style.display = 'none';
       return;
     }
-    const mentor = assignment.mentor;
-    window.chatState = { with: mentor.telegram_id, name: mentor.anonymous_id };
-    $('chatWith').textContent = mentor.user_settings?.display_name || mentor.anonymous_id;
-    $('chatInputRow').style.display = 'flex';
-    loadMessages(mentor.telegram_id);
+
+    if (res.type === 'single') {
+      selector.style.display = 'none';
+      $('chatWith').style.display = 'block';
+      $('chatWith').textContent = res.partner.display_name;
+      window.chatState = { with: res.partner.telegram_id, name: res.partner.anonymous_id };
+      $('chatInputRow').style.display = 'flex';
+      loadMessages(res.partner.telegram_id);
+    } else {
+      // Multiple mentees (mentor)
+      $('chatWith').style.display = 'none';
+      selector.style.display = 'block';
+      selector.innerHTML = res.mentees.map(m => `<option value="${m.telegram_id}">${escapeHtml(m.display_name)}</option>`).join('');
+      
+      const selectedId = targetId || res.mentees[0].telegram_id;
+      selector.value = selectedId;
+      
+      const partner = res.mentees.find(m => String(m.telegram_id) === String(selectedId)) || res.mentees[0];
+      window.chatState = { with: partner.telegram_id, name: partner.anonymous_id };
+      $('chatInputRow').style.display = 'flex';
+      loadMessages(partner.telegram_id);
+    }
   } catch (e) {
     console.error(e);
+    $('chatMessages').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
   }
+}
+
+function switchChatPartner(tid) {
+  window.chatState.with = tid;
+  loadMessages(tid);
+}
+
+function openChat(partnerId) {
+  window.pendingChatPartner = partnerId;
+  navigate('chat');
 }
 
 async function loadMessages(with_id) {
@@ -801,7 +882,7 @@ async function loadMyMentees() {
           </div>
           <div class="flex gap-8 mb-8">
             <button class="btn btn-outline btn-sm flex-1" onclick="openChat('${user.telegram_id}', '${escapeHtml(user.anonymous_id)}')">Message</button>
-            <button class="btn btn-outline btn-sm flex-1" onclick="navigate('sessions')">Schedule</button>
+            <button class="btn btn-outline btn-sm flex-1" onclick="createSession(false, '${user.telegram_id}')">Session</button>
           </div>
           <div class="form-group mb-0">
             <textarea id="note-${user.telegram_id}" class="form-control text-sm" placeholder="Private note about this mentee..." rows="2" onblur="saveMentorNote('${user.telegram_id}')"></textarea>
