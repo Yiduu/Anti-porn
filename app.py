@@ -19,8 +19,6 @@ if database_url and database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///counseling.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = True
 CORS(app, supports_credentials=True)
 
 db.init_app(app)
@@ -326,27 +324,12 @@ def miniapp():
 # ---------- Start Flask in background thread, bot in main thread ----------
 def run_flask():
     port = int(os.environ.get('PORT', 5000))
-    print(f"🚀 Starting Flask server on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-def start_services():
-    # Start Flask in a daemon thread
+if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    
-    # Wait for Flask to initialize
+    print("🌐 Flask server started in background thread")
     time.sleep(2)
-    
-    # Start Telegram Bot in the main thread
-    print("🤖 Starting Telegram bot...")
     from telegram_bot import main as bot_main
-    try:
-        bot_main()
-    except Exception as e:
-        print(f"❌ Bot failed to start: {e}")
-        # Keep the main thread alive if the bot fails, so Flask continues
-        while True:
-            time.sleep(3600)
-
-if __name__ == '__main__':
-    start_services()
+    bot_main()
