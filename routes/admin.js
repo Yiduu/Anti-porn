@@ -82,6 +82,22 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     res.json({ success: true });
   });
 
+  // DELETE /api/admin/users/:id/delete
+  router.delete('/users/:id/delete', async (req, res) => {
+    const admin_id = req.telegramUser.id;
+    const telegram_id = parseInt(req.params.id);
+
+    // Get user first for logging
+    const { data: user } = await supabase.from('users').select('anonymous_id').eq('telegram_id', telegram_id).single();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const { error } = await supabase.from('users').delete().eq('telegram_id', telegram_id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    await logAudit(admin_id, 'delete_user', telegram_id, 'user', { anonymous_id: user.anonymous_id });
+    res.json({ success: true });
+  });
+
   // GET /api/admin/applications
   router.get('/applications', async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -91,7 +107,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
 
     const { data, count, error } = await supabase
       .from('mentor_applications')
-      .select('*, user:telegram_id(anonymous_id, sex, age_range, created_at)', { count: 'exact' })
+      .select('*, user:users!telegram_id(anonymous_id, sex, age_range, created_at)', { count: 'exact' })
       .eq('status', status)
       .order('submitted_at', { ascending: false })
       .range(offset, offset + limit - 1);
