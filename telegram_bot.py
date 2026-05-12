@@ -1,6 +1,9 @@
 import os
+from dotenv import load_dotenv
 from telegram import Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
+
+load_dotenv()
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 WEBAPP_URL = os.environ.get('WEBAPP_URL', 'https://your-app.onrender.com/miniapp')
