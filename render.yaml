@@ -3,7 +3,7 @@ services:
     name: counseling-bot
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: python app.py
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -12,7 +12,7 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: WEBAPP_URL
-        value: https://counseling-bot.onrender.com/miniapp
+        value: https://anti-porn.onrender.com/miniapp
       - key: SECRET_KEY
         generateValue: true
 
