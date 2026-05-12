@@ -173,6 +173,7 @@ function navigate(page) {
     case 'chat': loadChat(); break;
     case 'requests': loadRequests(); break;
     case 'settings': loadSettings(); break;
+    case 'my-mentees': loadMyMentees(); break;
   }
 }
 
@@ -248,7 +249,11 @@ function startApp() {
   // Show requests nav if mentor
   if (currentUser?.role === 'mentor') {
     $('nav-requests')?.classList.remove('hidden');
+    $('nav-my-mentees')?.style.setProperty('display', 'flex');
   }
+
+  // Initial translation
+  applyLanguage();
 }
 
 // Keep-alive for Render free tier
@@ -657,6 +662,175 @@ async function submitTicket() {
     await apiFetch('/api/support', { method: 'POST', body: { subject, description } });
     showToast('Ticket submitted', 'success');
     $('ticketSubject').value = ''; $('ticketDesc').value = '';
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ─── Localization ─────────────────────────────────────────────
+const I18N = {
+  en: {
+    'Home': 'Home',
+    'Mentors': 'Mentors',
+    'Sessions': 'Sessions',
+    'Chat': 'Chat',
+    'Requests': 'Requests',
+    'Settings': 'Settings',
+    'My Mentees': 'My Mentees',
+    'Active Clients': 'Active Clients',
+    'Language': 'Language',
+    'Identity': 'Identity',
+    'Display': 'Display',
+    'Notifications': 'Notifications',
+    'Save': 'Save',
+    'Join the Community 🙏': 'Join the Community 🙏',
+    'Anonymous ID': 'Anonymous ID',
+    'Role': 'Role',
+    'Display Name (still anonymous)': 'Display Name (still anonymous)',
+    'Timezone': 'Timezone',
+    'Theme': 'Theme',
+    'Toggle Dark/Light': 'Toggle Dark/Light',
+    'New Messages': 'New Messages',
+    'Session Reminders': 'Session Reminders',
+    'Daily Bible Verse': 'Daily Bible Verse',
+    'Mentor Profile': 'Mentor Profile',
+    'Bio': 'Bio',
+    'Specialization': 'Specialization',
+    'Max Mentees': 'Max Mentees',
+    'No active mentees yet': 'No active mentees yet',
+    'Joined': 'Joined',
+    'Sessions:': 'Sessions:',
+    'End': 'End',
+    'Message': 'Message',
+    'Schedule': 'Schedule',
+    'Private note about this mentee...': 'Private note about this mentee...',
+    'Pending mentorship applications from users.': 'Pending mentorship applications from users.',
+  },
+  am: {
+    'Home': 'መነሻ',
+    'Mentors': 'አማካሪዎች',
+    'Sessions': 'ክፍለ-ጊዜዎች',
+    'Chat': 'ውይይት',
+    'Requests': 'ጥያቄዎች',
+    'Settings': 'ቅንብሮች',
+    'My Mentees': 'የእኔ ተማሪዎች',
+    'Active Clients': 'ንቁ ተማሪዎች',
+    'Language': 'ቋንቋ',
+    'Identity': 'ማንነት',
+    'Display': 'እይታ',
+    'Notifications': 'ማሳወቂያዎች',
+    'Save': 'አስቀምጥ',
+    'Join the Community 🙏': 'ማህበረሰቡን ይቀላቀሉ 🙏',
+    'Anonymous ID': 'ስም-አልባ መታወቂያ',
+    'Role': 'ሚና',
+    'Display Name (still anonymous)': 'የማሳያ ስም',
+    'Timezone': 'የሰዓት ቀጠና',
+    'Theme': 'ገጽታ',
+    'Toggle Dark/Light': 'ቀን/ማታ ቀይር',
+    'New Messages': 'አዲስ መልዕክቶች',
+    'Session Reminders': 'የክፍለ-ጊዜ ማሳሰቢያዎች',
+    'Daily Bible Verse': 'ዕለታዊ የመጽሐፍ ቅዱስ ጥቅስ',
+    'Mentor Profile': 'የአማካሪ መገለጫ',
+    'Bio': 'ስለ እኔ',
+    'Specialization': 'ልዩ ችሎታ',
+    'Max Mentees': 'ከፍተኛ የተማሪዎች ብዛት',
+    'No active mentees yet': 'እስካሁን ምንም ንቁ ተማሪዎች የሉም',
+    'Joined': 'የተቀላቀሉበት',
+    'Sessions:': 'ክፍለ-ጊዜዎች:',
+    'End': 'አቁም',
+    'Message': 'መልዕክት',
+    'Schedule': 'ቀጠሮ',
+    'Private note about this mentee...': 'ስለ ተማሪው የግል ማስታወሻ...',
+    'Pending mentorship applications from users.': 'ከተጠቃሚዎች የቀረቡ የአማካሪነት ጥያቄዎች።',
+  }
+};
+
+let currentLanguage = localStorage.getItem('language') || 'en';
+
+function applyLanguage() {
+  const dict = I18N[currentLanguage] || I18N.en;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const translated = dict[key] || key;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.placeholder = translated;
+    } else {
+      el.textContent = translated;
+    }
+  });
+  // Sync dropdown
+  const langSelect = $('settingLanguage');
+  if (langSelect) langSelect.value = currentLanguage;
+}
+
+function changeLanguage(lang) {
+  currentLanguage = lang;
+  localStorage.setItem('language', lang);
+  applyLanguage();
+  // We can't translate the Bible verse on the fly anymore without the API
+  // but we can reload the dashboard if needed
+  loadDashboard();
+}
+
+// ─── Mentor Management ────────────────────────────────────────
+async function loadMyMentees() {
+  const container = $('menteesList');
+  container.innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
+  try {
+    const mentees = await apiFetch('/api/mentors/my-mentees');
+    const stats = await apiFetch('/api/mentors/my-mentees/stats');
+    
+    $('activeMenteeCount').textContent = mentees.length;
+    if (!mentees.length) {
+      container.innerHTML = '<div class="empty-state"><span>No active mentees yet</span></div>';
+      return;
+    }
+
+    let html = '';
+    for (const m of mentees) {
+      const { user, assigned_at, id: assignId } = m;
+      const sessionCount = stats[user.telegram_id] || 0;
+      
+      html += `
+        <div class="card mb-12">
+          <div class="flex justify-between items-start mb-8">
+            <div>
+              <div class="font-bold" style="color:var(--gold)">${escapeHtml(user.anonymous_id)}</div>
+              <div class="text-xs text-dim">Joined ${new Date(assigned_at).toLocaleDateString()}</div>
+              <div class="text-xs text-dim">Sessions: ${sessionCount}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="endMentorship('${assignId}')">End</button>
+          </div>
+          <div class="flex gap-8 mb-8">
+            <button class="btn btn-outline btn-sm flex-1" onclick="openChat('${user.telegram_id}', '${escapeHtml(user.anonymous_id)}')">Message</button>
+            <button class="btn btn-outline btn-sm flex-1" onclick="navigate('sessions')">Schedule</button>
+          </div>
+          <div class="form-group mb-0">
+            <textarea id="note-${user.telegram_id}" class="form-control text-sm" placeholder="Private note about this mentee..." rows="2" onblur="saveMentorNote('${user.telegram_id}')"></textarea>
+          </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+    
+    // Load notes
+    for (const m of mentees) {
+      const note = await apiFetch(`/api/mentors/notes/${m.user.telegram_id}`);
+      if (note.content) $(`note-${m.user.telegram_id}`).value = note.content;
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function saveMentorNote(menteeId) {
+  const content = $(`note-${menteeId}`).value.trim();
+  try {
+    await apiFetch('/api/mentors/notes', { method: 'POST', body: { mentee_id: menteeId, content } });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function endMentorship(assignId) {
+  if (!confirm('End this mentorship assignment?')) return;
+  try {
+    await apiFetch(`/api/mentors/end-mentorship/${assignId}`, { method: 'DELETE' });
+    showToast('Mentorship ended', 'success');
+    loadMyMentees();
   } catch (e) { showToast(e.message, 'error'); }
 }
 
