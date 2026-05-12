@@ -198,7 +198,17 @@ async function completeRegistration() {
   const sex = $('regSex').value;
   const age_range = $('regAge').value;
   const education_level = $('regEdu').value;
-  if (!sex || !age_range || !education_level) { showToast('Please complete all fields', 'error'); return; }
+  const nickname = $('regNickname').value.trim();
+
+  if (!sex || !age_range || !education_level || !nickname) { 
+    showToast('Please complete all fields', 'error'); return; 
+  }
+
+  // Validate nickname: 3-20 chars, alphanumeric + underscores
+  const nickRegex = /^[a-zA-Z0-9_]{3,20}$/;
+  if (!nickRegex.test(nickname)) {
+    showToast('Invalid nickname format (3-20 chars, no spaces)', 'error'); return;
+  }
 
   const regBtn = $('regBtn');
   regBtn.disabled = true; regBtn.textContent = 'Registering...';
@@ -206,15 +216,19 @@ async function completeRegistration() {
   try {
     const data = await apiFetch('/api/auth/register', {
       method: 'POST',
-      body: { sex, age_range, education_level, chat_id: getTelegramData().user?.id },
+      body: { sex, age_range, education_level, nickname, chat_id: getTelegramData().user?.id },
     });
     currentUser = data.user;
     $('onboarding').style.display = 'none';
     startApp();
     showToast('Welcome! You are now registered 🙏', 'success');
   } catch (e) {
-    showToast(e.message, 'error');
-    regBtn.disabled = false; regBtn.textContent = 'Join the Community';
+    if (e.message.includes('taken')) {
+      showToast('Nickname taken, try another', 'error');
+    } else {
+      showToast(e.message, 'error');
+    }
+    regBtn.disabled = false; regBtn.textContent = 'Join the Community 🙏';
   }
 }
 
