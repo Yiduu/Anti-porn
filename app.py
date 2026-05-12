@@ -324,12 +324,27 @@ def miniapp():
 # ---------- Start Flask in background thread, bot in main thread ----------
 def run_flask():
     port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Starting Flask server on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-if __name__ == '__main__':
+def start_services():
+    # Start Flask in a daemon thread
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print("🌐 Flask server started in background thread")
+    
+    # Wait for Flask to initialize
     time.sleep(2)
+    
+    # Start Telegram Bot in the main thread
+    print("🤖 Starting Telegram bot...")
     from telegram_bot import main as bot_main
-    bot_main()
+    try:
+        bot_main()
+    except Exception as e:
+        print(f"❌ Bot failed to start: {e}")
+        # Keep the main thread alive if the bot fails, so Flask continues
+        while True:
+            time.sleep(3600)
+
+if __name__ == '__main__':
+    start_services()
