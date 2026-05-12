@@ -455,14 +455,16 @@
             timeoutId = setTimeout(() => {
                 loadingMsg.textContent = 'Connection timeout. Checking status...';
                 // Try a simple ping
-                api.get('/ping').catch(() => {
+                api.get('/ping').catch(err => {
+                    const errorMsg = err.response ? `Server responded with ${err.response.status}` : (err.request ? "No response from server" : err.message);
                     authScreen.innerHTML = `
                         <div class="error-box">
                             <div style="font-size:2rem;">🌐</div>
                             <h3>Server Unreachable</h3>
-                            <p>The app could not connect to the server. This usually happens if the server is sleeping or your internet is restricted.</p>
-                            <p style="font-size:0.7rem; color:var(--text-dim); margin-top:10px;">URL: ${window.location.origin}</p>
-                            <button class="btn-primary" onclick="location.reload()">Try Again</button>
+                            <p>The app could not connect to the server.</p>
+                            <p style="font-size:0.75rem; color:#ff4444; margin:10px 0;">Error: ${errorMsg}</p>
+                            <p style="font-size:0.7rem; color:var(--text-dim);">Domain: ${window.location.origin}</p>
+                            <button class="btn-primary" onclick="location.reload()" style="margin-top:10px;">Try Again</button>
                         </div>
                     `;
                 });
