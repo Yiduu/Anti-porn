@@ -151,6 +151,10 @@ function connectSocket() {
       window.typingTimeout = setTimeout(() => { $('typingIndicator').textContent = ''; }, 2000);
     }
   });
+  socket.on('new_mentorship_request', () => {
+    showToast('New mentorship request received! 🙏', 'success');
+    if (currentPage === 'requests') loadRequests();
+  });
 }
 
 // ─── Navigation ───────────────────────────────────────────────
@@ -167,6 +171,7 @@ function navigate(page) {
     case 'mentors': loadMentors(); break;
     case 'sessions': loadSessions(); break;
     case 'chat': loadChat(); break;
+    case 'requests': loadRequests(); break;
     case 'settings': loadSettings(); break;
   }
 }
@@ -224,6 +229,11 @@ function startApp() {
   // Show admin button if current user is admin
   if (String(currentUser?.telegram_id) === String(window.ADMIN_ID)) {
     $('adminBtn')?.classList.remove('hidden');
+  }
+
+  // Show requests nav if mentor
+  if (currentUser?.role === 'mentor') {
+    $('nav-requests')?.classList.remove('hidden');
   }
 }
 
@@ -344,6 +354,49 @@ async function requestMentorship(mentor_id) {
     await apiFetch('/api/mentors/request', { method: 'POST', body: { mentor_id, message: 'I would like your mentorship.' } });
     showToast('Mentorship request sent! 🙏', 'success');
     loadMentors();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ─── Mentorship Requests ──────────────────────────────────────
+async function loadRequests() {
+  const container = $('requestsList');
+  if (!container) return;
+  container.innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
+  try {
+    const requests = await apiFetch('/api/mentors/my-requests');
+    if (!requests.length) {
+      container.innerHTML = '<div class="empty-state"><span>No pending requests</span></div>';
+      return;
+    }
+    container.innerHTML = requests.map(r => {
+      const name = r.sender?.user_settings?.display_name || r.sender?.anonymous_id || 'Anonymous';
+      return `
+        <div class="mentor-card">
+          <div class="mentor-info">
+            <div class="mentor-id">${escapeHtml(name)}</div>
+            <div class="mentor-bio" style="margin-top:4px">${escapeHtml(r.message)}</div>
+          </div>
+          <div class="flex gap-8 mt-12">
+            <button class="btn btn-primary btn-sm flex-1" onclick="respondToRequest('${r.id}', 'accepted')">Accept</button>
+            <button class="btn btn-outline btn-sm flex-1" onclick="respondToRequest('${r.id}', 'rejected')">Reject</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
+  }
+}
+
+async function respondToRequest(requestId, status) {
+  try {
+    await apiFetch(`/api/mentors/request/${requestId}`, {
+      method: 'PATCH',
+      body: { status }
+    });
+    showToast(`Request ${status}`, 'success');
+    loadRequests();
   } catch (e) {
     showToast(e.message, 'error');
   }
