@@ -118,7 +118,6 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await start(update, context)
 
         if text == "🏠 My Dashboard":
-            status = "Registered"
             mentor_name = "None"
             if user.role == 'user' and user.assigned_mentor_id:
                 mentor = User.query.get(user.assigned_mentor_id)
@@ -236,6 +235,52 @@ async def handle_admin_query(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return CHAT_MODE
 
+# Chat System
+async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == "/exit":
+        context.user_data['chat_active'] = False
+        await update.message.reply_text("Chat mode deactivated.")
+        return await start(update, context)
+    
+    user_id = str(update.effective_user.id)
+    app, db, User, Message, Meeting = get_db()
+    
+    with app.app_context():
+        user = User.query.filter_by(telegram_id=user_id).first()
+        recipient_id = context.user_data.get('chat_partner_id')
+        
+        if not recipient_id:
+            if user.role == 'user':
+                recipient_id = user.assigned_mentor_id
+            else:
+                await update.message.reply_text("Please select a client to chat with from 'My Clients'.")
+                return
+            
+        if not recipient_id:
+            await update.message.reply_text("Could not find a chat partner.")
+            return
+        
+        recipient = User.query.get(recipient_id)
+        
+        # Save message
+        new_msg = Message(sender_id=user.id, recipient_id=recipient_id, content=update.message.text)
+        db.session.add(new_msg)
+        db.session.commit()
+        
+        # Forward to Telegram
+        if recipient.telegram_id:
+            try:
+                await context.bot.send_message(
+                    chat_id=recipient.telegram_id,
+                    text=f"✉️ **New Message from {user.full_name}:**\n\n{update.message.text}",
+                    parse_mode='Markdown'
+                )
+                await update.message.reply_text("✅ Sent")
+            except:
+                await update.message.reply_text("✅ Saved (Recipient currently offline)")
+        else:
+            await update.message.reply_text("✅ Saved (Recipient has no Telegram linked)")
+
 async def assign_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     app, db, User, Message, Meeting = get_db()
@@ -258,51 +303,6 @@ async def assign_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Invalid IDs or role.")
         except:
             await update.message.reply_text("Usage: `/assign [user_id] [mentor_id]`")
-
-async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == "/exit":
-        context.user_data['chat_active'] = False
-        await update.message.reply_text("Chat mode deactivated.")
-        return await start(update, context)
-    
-    user_id = str(update.effective_user.id)
-    app, db, User, Message, Meeting = get_db()
-    
-    with app.app_context():
-        user = User.query.filter_by(telegram_id=user_id).first()
-        recipient_id = None
-        
-        if user.role == 'user':
-            recipient_id = user.assigned_mentor_id
-        elif user.role == 'mentor':
-            # Simplified: send to most recent client or first one
-            client = User.query.filter_by(assigned_mentor_id=user.id).first()
-            if client: recipient_id = client.id
-            
-        if not recipient_id:
-            await update.message.reply_text("Could not find a chat partner.")
-            return
-        
-        recipient = User.query.get(recipient_id)
-        
-        # Save message
-        new_msg = Message(sender_id=user.id, recipient_id=recipient_id, content=update.message.text)
-        db.session.add(new_msg)
-        db.session.commit()
-        
-        # Forward to Telegram if recipient has telegram_id
-        if recipient.telegram_id:
-            try:
-                await context.bot.send_message(
-                    chat_id=recipient.telegram_id,
-                    text=f"✉️ **New Message from {user.full_name or user.username}:**\n\n{update.message.text}",
-                    parse_mode='Markdown'
-                )
-                await update.message.reply_text("✅ Sent")
-            except:
-                await update.message.reply_text("✅ Saved (Recipient currently offline)")
-        else:
-            await update.message.reply_text("✅ Saved (Recipient has no Telegram linked)")
 
 async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
