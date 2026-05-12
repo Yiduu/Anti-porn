@@ -1,410 +1,599 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Counseling Hub – Mini App</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root {
-      --primary: #c9a84c;
-      --primary-rgb: 201, 168, 76;
-      --bg-color: #0a0a0a;
-      --card-bg: rgba(26, 26, 26, 0.7);
-      --border: rgba(255, 255, 255, 0.1);
-      --text: #f0f0f0;
-      --text-dim: rgba(255, 255, 255, 0.5);
-      --font-family: 'Inter', sans-serif;
-      --radius: 12px;
-      --nav-h: 65px;
-    }
-    body {
-      font-family: var(--font-family);
-      background-color: var(--bg-color);
-      background-image: radial-gradient(circle at 30% 20%, rgba(201,168,76,0.08) 0%, transparent 60%);
-      color: var(--text);
-      min-height: 100vh;
-      padding-bottom: calc(var(--nav-h) + 80px);
-    }
-    canvas#particleCanvas {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: -1;
-      pointer-events: none;
-    }
-    .page { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
-    .page.active { display: block; }
-    .app-header { text-align: center; padding: 10px 16px; }
-    .app-logo {
-      width: 130px; max-width: 80%; border-radius: 24px; margin-bottom: 20px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    }
-    .app-title { font-size: 1.6rem; color: var(--primary); font-weight: 700; }
-    .app-subtitle { font-size: 0.85rem; color: var(--text-dim); margin-top: 4px; }
-    .bottom-nav {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      height: var(--nav-h); background: rgba(10,10,10,0.85); backdrop-filter: blur(20px);
-      border-top: 1px solid var(--border);
-      display: flex; justify-content: space-around; align-items: center;
-      z-index: 1000; padding-bottom: env(safe-area-inset-bottom,0);
-    }
-    .nav-btn {
-      background: none; border: none; color: var(--text-dim);
-      font-size: 0.75rem; display: flex; flex-direction: column; align-items: center; gap: 4px;
-      cursor: pointer; flex: 1; padding: 8px 0;
-      transition: color 0.2s;
-    }
-    .nav-btn.active { color: var(--primary); }
-    .nav-icon { font-size: 1.4rem; }
-    .card {
-      background: var(--card-bg); backdrop-filter: blur(20px);
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 16px; margin-bottom: 16px;
-    }
-    .card-title { font-size: 1.1rem; color: var(--primary); font-weight: 600; margin-bottom: 6px; }
-    .input-field {
-      width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
-      border-radius: 8px; padding: 12px; color: var(--text);
-      font-family: var(--font-family); font-size: 0.9rem; outline: none; margin-bottom: 12px;
-    }
-    .input-field:focus { border-color: var(--primary); }
-    .btn-primary {
-      width: 100%; padding: 14px; background: var(--primary); color: #000;
-      border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    .btn-primary:active { opacity: 0.8; }
-    .btn-ghost {
-      background: transparent; border: 1px solid var(--primary);
-      color: var(--primary); padding: 6px 12px; border-radius: 6px;
-      font-size: 0.8rem; cursor: pointer;
-    }
-    .chat-container {
-      height: 400px; overflow-y: auto; background: rgba(0,0,0,0.2);
-      border-radius: 8px; padding: 8px; margin-bottom: 12px;
-    }
-    .message-bubble { margin: 8px 0; display: flex; }
-    .message-bubble.sent { justify-content: flex-end; }
-    .message-bubble.received { justify-content: flex-start; }
-    .bubble {
-      max-width: 70%; padding: 8px 12px; border-radius: 18px;
-      background: rgba(201,168,76,0.15); border: 1px solid var(--border);
-      font-size: 0.85rem;
-    }
-    .sent .bubble { background: var(--primary); color: #000; border: none; }
-    .meeting-card {
-      background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px;
-      margin-bottom: 10px; border-left: 3px solid var(--primary);
-    }
-    .flex-between { display: flex; justify-content: space-between; align-items: center; }
-    .mt-2 { margin-top: 8px; }
-    .text-dim { color: var(--text-dim); font-size: 0.8rem; }
-    .gold-text { color: var(--primary); }
-    .toast {
-      position: fixed; bottom: 85px; left: 50%; transform: translateX(-50%);
-      background: var(--primary); color: #000; padding: 10px 20px; border-radius: 20px;
-      font-size: 0.85rem; font-weight: 600; opacity: 0; pointer-events: none;
-      transition: opacity 0.3s; z-index: 2000;
-    }
-    .toast.show { opacity: 1; }
-    .spinner {
-      width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1);
-      border-top-color: var(--primary); border-radius: 50%;
-      animation: spin 1s linear infinite; margin: 20px auto;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .error-box {
-      background: rgba(255,0,0,0.1); border: 1px solid #ff4444; border-radius: 8px;
-      padding: 16px; text-align: center; margin: 20px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Counseling Hub – Mini App</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #c9a84c;
+            --primary-rgb: 201, 168, 76;
+            --bg-color: #0a0a0a;
+            --card-bg: rgba(26, 26, 26, 0.7);
+            --border: rgba(255, 255, 255, 0.1);
+            --text: #f0f0f0;
+            --text-dim: rgba(255, 255, 255, 0.5);
+            --font-family: 'Inter', sans-serif;
+            --radius: 12px;
+            --nav-h: 65px;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 30% 20%, rgba(201, 168, 76, 0.08) 0%, transparent 60%);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: calc(var(--nav-h) + 80px);
+        }
+
+        canvas#particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .page {
+            display: none;
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .app-header {
+            text-align: center;
+            padding: 10px 16px;
+        }
+
+        .app-logo {
+            width: 130px;
+            max-width: 80%;
+            border-radius: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .app-title {
+            font-size: 1.6rem;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .app-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--nav-h);
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1000;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            flex: 1;
+            padding: 8px 0;
+            transition: color 0.2s;
+        }
+
+        .nav-btn.active {
+            color: var(--primary);
+        }
+
+        .nav-icon {
+            font-size: 1.4rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            color: var(--primary);
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .input-field {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            color: var(--text);
+            font-family: var(--font-family);
+            font-size: 0.9rem;
+            outline: none;
+            margin-bottom: 12px;
+        }
+
+        .input-field:focus {
+            border-color: var(--primary);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary:active {
+            opacity: 0.8;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 12px;
+        }
+
+        .message-bubble {
+            margin: 8px 0;
+            display: flex;
+        }
+
+        .message-bubble.sent {
+            justify-content: flex-end;
+        }
+
+        .message-bubble.received {
+            justify-content: flex-start;
+        }
+
+        .bubble {
+            max-width: 70%;
+            padding: 8px 12px;
+            border-radius: 18px;
+            background: rgba(201, 168, 76, 0.15);
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        .sent .bubble {
+            background: var(--primary);
+            color: #000;
+            border: none;
+        }
+
+        .meeting-card {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .mt-2 {
+            margin-top: 8px;
+        }
+
+        .text-dim {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        .gold-text {
+            color: var(--primary);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 85px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: #000;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 2000;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error-box {
+            background: rgba(255, 0, 0, 0.1);
+            border: 1px solid #ff4444;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            margin: 20px;
+        }
+    </style>
 </head>
+
 <body>
 
-<canvas id="particleCanvas"></canvas>
+    <canvas id="particleCanvas"></canvas>
 
-<div id="authScreen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-  <div class="spinner"></div>
-  <h2 style="margin-top:20px; color:var(--primary);">Loading...</h2>
-  <p id="loadingMsg" style="margin-top:10px; color:var(--text-dim); font-size:0.8rem;"></p>
-</div>
-
-<div id="mainApp" style="display:none;">
-  <header class="app-header">
-    <img src="/static/logo.png" class="app-logo" alt="Logo" onerror="this.style.display='none'">
-    <div class="app-title">Counseling Hub</div>
-    <div class="app-subtitle">Anonymous support • Professional mentors</div>
-  </header>
-
-  <!-- Auth Page -->
-  <div id="authPage" class="page active">
-    <div class="card" id="loginForm">
-      <div class="card-title">Welcome Back</div>
-      <input type="text" id="loginUsername" class="input-field" placeholder="Username">
-      <input type="password" id="loginPassword" class="input-field" placeholder="Password">
-      <button class="btn-primary" id="loginBtn">Login</button>
-      <p class="text-dim" style="text-align:center; margin-top:16px;">Don't have an account? <span class="gold-text" style="cursor:pointer;" onclick="showRegisterForm()">Register</span></p>
+    <div id="authScreen"
+        style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div class="spinner"></div>
+        <h2 style="margin-top:20px; color:var(--primary);">Loading...</h2>
+        <p id="loadingMsg" style="margin-top:10px; color:var(--text-dim); font-size:0.8rem;"></p>
     </div>
-    <div class="card" id="registerForm" style="display:none;">
-      <div class="card-title">Create Account</div>
-      <input type="text" id="regUsername" class="input-field" placeholder="Username">
-      <input type="email" id="regEmail" class="input-field" placeholder="Email">
-      <input type="text" id="regFullname" class="input-field" placeholder="Full Name">
-      <input type="password" id="regPassword" class="input-field" placeholder="Password">
-      <select id="regRole" class="input-field">
-        <option value="user">Client (Seeking help)</option>
-        <option value="mentor">Mentor (Professional)</option>
-      </select>
-      <button class="btn-primary" id="registerBtn">Register</button>
-      <p class="text-dim" style="text-align:center; margin-top:16px;"><span class="gold-text" style="cursor:pointer;" onclick="showLoginForm()">← Back to Login</span></p>
-    </div>
-  </div>
 
-  <!-- Dashboard -->
-  <div id="dashboardPage" class="page">
-    <div id="dashboardContent"></div>
-  </div>
+    <div id="mainApp" style="display:none;">
+        <header class="app-header">
+            <img src="/static/logo.png" class="app-logo" alt="Logo" onerror="this.style.display='none'">
+            <div class="app-title">Counseling Hub</div>
+            <div class="app-subtitle">Anonymous support • Professional mentors</div>
+        </header>
 
-  <!-- Profile -->
-  <div id="profilePage" class="page">
-    <div class="card">
-      <div class="card-title">My Profile</div>
-      <div id="profileInfo"></div>
-      <div class="mt-2">
-        <label class="text-dim">Full Name</label>
-        <input type="text" id="editFullname" class="input-field" style="margin-top:4px;">
-        <label class="text-dim">Email</label>
-        <input type="email" id="editEmail" class="input-field" style="margin-top:4px;">
-        <button class="btn-primary" id="updateProfileBtn">Update Profile</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Chat -->
-  <div id="chatPage" class="page">
-    <div class="card">
-      <div class="flex-between">
-        <div class="card-title">Chat</div>
-        <select id="chatPartnerSelect" class="input-field" style="width:auto; padding:6px; margin:0;"></select>
-      </div>
-      <div id="chatMessages" class="chat-container"></div>
-      <div class="flex-between" style="gap:8px;">
-        <input type="text" id="messageInput" class="input-field" style="margin:0; flex:1;" placeholder="Type a message...">
-        <button class="btn-primary" id="sendMsgBtn" style="width:auto; padding:10px 16px;">Send</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Meetings -->
-  <div id="meetingsPage" class="page">
-    <div class="card">
-      <div class="card-title">Upcoming Meetings</div>
-      <div id="meetingsList"></div>
-      <div id="scheduleForm" style="display:none;" class="mt-2">
-        <input type="text" id="meetingTitle" class="input-field" placeholder="Title">
-        <textarea id="meetingDesc" class="input-field" rows="2" placeholder="Description"></textarea>
-        <input type="datetime-local" id="meetingTime" class="input-field">
-        <select id="meetingType" class="input-field">
-          <option value="global">Global Meeting (all clients)</option>
-          <option value="personal">Personal Meeting with specific client</option>
-        </select>
-        <select id="personalClientSelect" class="input-field" style="display:none;"></select>
-        <button class="btn-primary" id="scheduleMeetingBtn">Schedule Meeting</button>
-      </div>
-      <button id="showScheduleBtn" class="btn-ghost" style="margin-top:12px; width:100%;">+ New Meeting</button>
-    </div>
-  </div>
-
-  <!-- Admin Panel -->
-  <div id="adminPage" class="page">
-    <div class="card">
-      <div class="card-title">Admin Dashboard</div>
-      <div id="adminContent"></div>
-    </div>
-  </div>
-
-  <nav class="bottom-nav">
-    <button class="nav-btn active" data-page="dashboard"><span class="nav-icon">🏠</span>Home</button>
-    <button class="nav-btn" data-page="profile"><span class="nav-icon">👤</span>Profile</button>
-    <button class="nav-btn" data-page="chat"><span class="nav-icon">💬</span>Chat</button>
-    <button class="nav-btn" data-page="meetings"><span class="nav-icon">📅</span>Meetings</button>
-    <button class="nav-btn" data-page="admin" style="display:none;"><span class="nav-icon">🛠️</span>Admin</button>
-  </nav>
-</div>
-
-<div id="toast" class="toast"></div>
-
-<script>
-  let currentUser = null;
-  let currentChatPartner = null;
-  let messagePollInterval = null;
-
-  // Axios setup with credentials and timeout
-  const api = axios.create({ baseURL: window.location.origin, withCredentials: true });
-  api.defaults.timeout = 10000; // 10 seconds
-
-  // Helper to show toast
-  function toast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3000);
-  }
-
-  // Escape HTML
-  function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
-
-  // Check auth with timeout and retry
-  async function checkAuth() {
-    const authScreen = document.getElementById('authScreen');
-    const loadingMsg = document.getElementById('loadingMsg');
-    let timeoutId;
-    
-    // Show a status message
-    loadingMsg.textContent = 'Connecting to server...';
-    
-    // Set a timeout to detect if the request hangs
-    timeoutId = setTimeout(() => {
-      loadingMsg.textContent = 'Server not responding. Please check your internet.';
-      authScreen.innerHTML = `
-        <div class="error-box">
-          <div style="font-size:2rem;">⚠️</div>
-          <h3>Connection Failed</h3>
-          <p>Could not reach the server. Please check your connection and try again.</p>
-          <button class="btn-primary" onclick="location.reload()">Retry</button>
+        <!-- Auth Page -->
+        <div id="authPage" class="page active">
+            <div class="card" id="loginForm">
+                <div class="card-title">Welcome Back</div>
+                <input type="text" id="loginUsername" class="input-field" placeholder="Username">
+                <input type="password" id="loginPassword" class="input-field" placeholder="Password">
+                <button class="btn-primary" id="loginBtn">Login</button>
+                <p class="text-dim" style="text-align:center; margin-top:16px;">Don't have an account? <span
+                        class="gold-text" style="cursor:pointer;" onclick="showRegisterForm()">Register</span></p>
+            </div>
+            <div class="card" id="registerForm" style="display:none;">
+                <div class="card-title">Create Account</div>
+                <input type="text" id="regUsername" class="input-field" placeholder="Username">
+                <input type="email" id="regEmail" class="input-field" placeholder="Email">
+                <input type="text" id="regFullname" class="input-field" placeholder="Full Name">
+                <input type="password" id="regPassword" class="input-field" placeholder="Password">
+                <select id="regRole" class="input-field">
+                    <option value="user">Client (Seeking help)</option>
+                    <option value="mentor">Mentor (Professional)</option>
+                </select>
+                <button class="btn-primary" id="registerBtn">Register</button>
+                <p class="text-dim" style="text-align:center; margin-top:16px;"><span class="gold-text"
+                        style="cursor:pointer;" onclick="showLoginForm()">← Back to Login</span></p>
+            </div>
         </div>
-      `;
-    }, 12000);
 
-    try {
-      const res = await api.get('/api/me');
-      clearTimeout(timeoutId);
-      currentUser = res.data;
-      // Store user in localStorage as fallback
-      localStorage.setItem('counseling_user', JSON.stringify(currentUser));
-      authScreen.style.display = 'none';
-      document.getElementById('mainApp').style.display = 'block';
-      document.getElementById('authPage').classList.remove('active');
-      document.getElementById('dashboardPage').classList.add('active');
-      loadDashboard();
-      startMessagePolling();
-      setupNav();
-      if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('Auth check failed:', error);
-      
-      // Check if we have a stored user from previous login
-      const storedUser = localStorage.getItem('counseling_user');
-      if (storedUser) {
-        try {
-          currentUser = JSON.parse(storedUser);
-          // Verify still valid by making a quick call
-          await api.get('/api/me');
-          // If it works, continue as logged in
-          authScreen.style.display = 'none';
-          document.getElementById('mainApp').style.display = 'block';
-          document.getElementById('authPage').classList.remove('active');
-          document.getElementById('dashboardPage').classList.add('active');
-          loadDashboard();
-          startMessagePolling();
-          setupNav();
-          if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
-          return;
-        } catch(e) {
-          // Stored user invalid, clear and show login
-          localStorage.removeItem('counseling_user');
+        <!-- Dashboard -->
+        <div id="dashboardPage" class="page">
+            <div id="dashboardContent"></div>
+        </div>
+
+        <!-- Profile -->
+        <div id="profilePage" class="page">
+            <div class="card">
+                <div class="card-title">My Profile</div>
+                <div id="profileInfo"></div>
+                <div class="mt-2">
+                    <label class="text-dim">Full Name</label>
+                    <input type="text" id="editFullname" class="input-field" style="margin-top:4px;">
+                    <label class="text-dim">Email</label>
+                    <input type="email" id="editEmail" class="input-field" style="margin-top:4px;">
+                    <button class="btn-primary" id="updateProfileBtn">Update Profile</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat -->
+        <div id="chatPage" class="page">
+            <div class="card">
+                <div class="flex-between">
+                    <div class="card-title">Chat</div>
+                    <select id="chatPartnerSelect" class="input-field"
+                        style="width:auto; padding:6px; margin:0;"></select>
+                </div>
+                <div id="chatMessages" class="chat-container"></div>
+                <div class="flex-between" style="gap:8px;">
+                    <input type="text" id="messageInput" class="input-field" style="margin:0; flex:1;"
+                        placeholder="Type a message...">
+                    <button class="btn-primary" id="sendMsgBtn" style="width:auto; padding:10px 16px;">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Meetings -->
+        <div id="meetingsPage" class="page">
+            <div class="card">
+                <div class="card-title">Upcoming Meetings</div>
+                <div id="meetingsList"></div>
+                <div id="scheduleForm" style="display:none;" class="mt-2">
+                    <input type="text" id="meetingTitle" class="input-field" placeholder="Title">
+                    <textarea id="meetingDesc" class="input-field" rows="2" placeholder="Description"></textarea>
+                    <input type="datetime-local" id="meetingTime" class="input-field">
+                    <select id="meetingType" class="input-field">
+                        <option value="global">Global Meeting (all clients)</option>
+                        <option value="personal">Personal Meeting with specific client</option>
+                    </select>
+                    <select id="personalClientSelect" class="input-field" style="display:none;"></select>
+                    <button class="btn-primary" id="scheduleMeetingBtn">Schedule Meeting</button>
+                </div>
+                <button id="showScheduleBtn" class="btn-ghost" style="margin-top:12px; width:100%;">+ New
+                    Meeting</button>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="adminPage" class="page">
+            <div class="card">
+                <div class="card-title">Admin Dashboard</div>
+                <div id="adminContent"></div>
+            </div>
+        </div>
+
+        <nav class="bottom-nav">
+            <button class="nav-btn active" data-page="dashboard"><span class="nav-icon">🏠</span>Home</button>
+            <button class="nav-btn" data-page="profile"><span class="nav-icon">👤</span>Profile</button>
+            <button class="nav-btn" data-page="chat"><span class="nav-icon">💬</span>Chat</button>
+            <button class="nav-btn" data-page="meetings"><span class="nav-icon">📅</span>Meetings</button>
+            <button class="nav-btn" data-page="admin" style="display:none;"><span
+                    class="nav-icon">🛠️</span>Admin</button>
+        </nav>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let currentUser = null;
+        let currentChatPartner = null;
+        let messagePollInterval = null;
+
+        // Axios setup with credentials and timeout
+        const api = axios.create({ baseURL: window.location.origin, withCredentials: true });
+        api.defaults.timeout = 10000; // 10 seconds
+
+        // Helper to show toast
+        function toast(msg) {
+            const t = document.getElementById('toast');
+            if (!t) return;
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
         }
-      }
-      
-      // Show login form
-      authScreen.style.display = 'none';
-      document.getElementById('mainApp').style.display = 'block';
-      document.getElementById('authPage').classList.add('active');
-    }
-  }
 
-  function setupNav() {
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.onclick = () => {
-        const page = btn.dataset.page;
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.getElementById(page + 'Page').classList.add('active');
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        if (page === 'dashboard') loadDashboard();
-        if (page === 'profile') loadProfile();
-        if (page === 'chat') loadChatPartners();
-        if (page === 'meetings') loadMeetings();
-        if (page === 'admin' && currentUser && currentUser.role === 'admin') loadAdminPanel();
-      };
-    });
-  }
+        // Initialize Telegram WebApp
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
 
-  function showRegisterForm() { document.getElementById('loginForm').style.display = 'none'; document.getElementById('registerForm').style.display = 'block'; }
-  function showLoginForm() { document.getElementById('loginForm').style.display = 'block'; document.getElementById('registerForm').style.display = 'none'; }
+        // Escape HTML
+        function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, function (m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
 
-  document.getElementById('loginBtn').onclick = async () => {
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
-    if (!username || !password) return toast('Enter username and password');
-    try {
-      const res = await api.post('/api/login', { username, password });
-      currentUser = res.data.user;
-      localStorage.setItem('counseling_user', JSON.stringify(currentUser));
-      toast(`Welcome ${currentUser.full_name || currentUser.username}`);
-      document.getElementById('authPage').classList.remove('active');
-      document.getElementById('dashboardPage').classList.add('active');
-      setupNav();
-      loadDashboard();
-      startMessagePolling();
-      if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
-    } catch(e) { toast('Login failed: ' + (e.response?.data?.error || 'Network error')); }
-  };
+        // Check auth with timeout and retry
+        async function checkAuth() {
+            const authScreen = document.getElementById('authScreen');
+            const loadingMsg = document.getElementById('loadingMsg');
+            let timeoutId;
 
-  document.getElementById('registerBtn').onclick = async () => {
-    const data = {
-      username: document.getElementById('regUsername').value,
-      email: document.getElementById('regEmail').value,
-      full_name: document.getElementById('regFullname').value,
-      password: document.getElementById('regPassword').value,
-      role: document.getElementById('regRole').value
-    };
-    if (!data.username || !data.password) return toast('Username and password required');
-    try {
-      await api.post('/api/register', data);
-      toast('Registration successful! Please login.');
-      showLoginForm();
-    } catch(e) { toast('Registration failed: ' + (e.response?.data?.error)); }
-  };
+            // Show a status message
+            loadingMsg.textContent = 'Connecting to server...';
 
-  async function loadDashboard() {
-    if (!currentUser) return;
-    const container = document.getElementById('dashboardContent');
-    if (currentUser.role === 'user') {
-      let mentorName = 'Not assigned';
-      if (currentUser.assigned_mentor_id) {
-        try {
-          const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
-          mentorName = res.data.full_name || res.data.username;
-        } catch(e) {}
-      }
-      container.innerHTML = `
+            // Set a timeout to detect if the request hangs
+            timeoutId = setTimeout(() => {
+                loadingMsg.textContent = 'Connection timeout. Checking status...';
+                // Try a simple ping
+                api.get('/ping').catch(() => {
+                    authScreen.innerHTML = `
+                        <div class="error-box">
+                            <div style="font-size:2rem;">🌐</div>
+                            <h3>Server Unreachable</h3>
+                            <p>The app could not connect to the server. This usually happens if the server is sleeping or your internet is restricted.</p>
+                            <p style="font-size:0.7rem; color:var(--text-dim); margin-top:10px;">URL: ${window.location.origin}</p>
+                            <button class="btn-primary" onclick="location.reload()">Try Again</button>
+                        </div>
+                    `;
+                });
+            }, 10000);
+
+            try {
+                const res = await api.get('/api/me');
+                clearTimeout(timeoutId);
+                currentUser = res.data;
+                // Store user in localStorage as fallback
+                localStorage.setItem('counseling_user', JSON.stringify(currentUser));
+                authScreen.style.display = 'none';
+                document.getElementById('mainApp').style.display = 'block';
+                document.getElementById('authPage').classList.remove('active');
+                document.getElementById('dashboardPage').classList.add('active');
+                loadDashboard();
+                startMessagePolling();
+                setupNav();
+                if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
+            } catch (error) {
+                clearTimeout(timeoutId);
+                console.error('Auth check failed:', error);
+
+                // Check if we have a stored user from previous login
+                const storedUser = localStorage.getItem('counseling_user');
+                if (storedUser) {
+                    try {
+                        currentUser = JSON.parse(storedUser);
+                        // Verify still valid by making a quick call
+                        await api.get('/api/me');
+                        // If it works, continue as logged in
+                        authScreen.style.display = 'none';
+                        document.getElementById('mainApp').style.display = 'block';
+                        document.getElementById('authPage').classList.remove('active');
+                        document.getElementById('dashboardPage').classList.add('active');
+                        loadDashboard();
+                        startMessagePolling();
+                        setupNav();
+                        if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
+                        return;
+                    } catch (e) {
+                        // Stored user invalid, clear and show login
+                        localStorage.removeItem('counseling_user');
+                    }
+                }
+
+                // Show login form
+                authScreen.style.display = 'none';
+                document.getElementById('mainApp').style.display = 'block';
+                document.getElementById('authPage').classList.add('active');
+            }
+        }
+
+        function setupNav() {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const page = btn.dataset.page;
+                    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                    document.getElementById(page + 'Page').classList.add('active');
+                    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    if (page === 'dashboard') loadDashboard();
+                    if (page === 'profile') loadProfile();
+                    if (page === 'chat') loadChatPartners();
+                    if (page === 'meetings') loadMeetings();
+                    if (page === 'admin' && currentUser && currentUser.role === 'admin') loadAdminPanel();
+                };
+            });
+        }
+
+        function showRegisterForm() { document.getElementById('loginForm').style.display = 'none'; document.getElementById('registerForm').style.display = 'block'; }
+        function showLoginForm() { document.getElementById('loginForm').style.display = 'block'; document.getElementById('registerForm').style.display = 'none'; }
+
+        document.getElementById('loginBtn').onclick = async () => {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            if (!username || !password) return toast('Enter username and password');
+            try {
+                const res = await api.post('/api/login', { username, password });
+                currentUser = res.data.user;
+                localStorage.setItem('counseling_user', JSON.stringify(currentUser));
+                toast(`Welcome ${currentUser.full_name || currentUser.username}`);
+                document.getElementById('authPage').classList.remove('active');
+                document.getElementById('dashboardPage').classList.add('active');
+                setupNav();
+                loadDashboard();
+                startMessagePolling();
+                if (currentUser.role === 'admin') document.querySelector('[data-page="admin"]').style.display = 'flex';
+            } catch (e) { toast('Login failed: ' + (e.response?.data?.error || 'Network error')); }
+        };
+
+        document.getElementById('registerBtn').onclick = async () => {
+            const data = {
+                username: document.getElementById('regUsername').value,
+                email: document.getElementById('regEmail').value,
+                full_name: document.getElementById('regFullname').value,
+                password: document.getElementById('regPassword').value,
+                role: document.getElementById('regRole').value
+            };
+            if (!data.username || !data.password) return toast('Username and password required');
+            try {
+                await api.post('/api/register', data);
+                toast('Registration successful! Please login.');
+                showLoginForm();
+            } catch (e) { toast('Registration failed: ' + (e.response?.data?.error)); }
+        };
+
+        async function loadDashboard() {
+            if (!currentUser) return;
+            const container = document.getElementById('dashboardContent');
+            if (currentUser.role === 'user') {
+                let mentorName = 'Not assigned';
+                if (currentUser.assigned_mentor_id) {
+                    try {
+                        const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
+                        mentorName = res.data.full_name || res.data.username;
+                    } catch (e) { }
+                }
+                container.innerHTML = `
         <div class="card">
           <div class="card-title">Welcome, ${escapeHtml(currentUser.full_name || currentUser.username)}</div>
           <p>Your assigned mentor: <strong class="gold-text">${escapeHtml(mentorName)}</strong></p>
           <button class="btn-primary" id="instantCallBtn" style="margin-top:12px;">📹 Start Instant Video Call</button>
         </div>
       `;
-      document.getElementById('instantCallBtn')?.addEventListener('click', startInstantMeeting);
-    } else if (currentUser.role === 'mentor') {
-      try {
-        const clientsRes = await api.get('/api/mentor/clients');
-        const clients = clientsRes.data;
-        container.innerHTML = `
+                document.getElementById('instantCallBtn')?.addEventListener('click', startInstantMeeting);
+            } else if (currentUser.role === 'mentor') {
+                try {
+                    const clientsRes = await api.get('/api/mentor/clients');
+                    const clients = clientsRes.data;
+                    container.innerHTML = `
           <div class="card">
             <div class="card-title">Mentor Dashboard</div>
             <p>You have <strong>${clients.length}</strong> assigned clients.</p>
@@ -412,108 +601,108 @@
             <button class="btn-ghost" id="viewMeetingsBtn" style="margin-top:12px;">View Meetings</button>
           </div>
         `;
-        document.getElementById('viewMeetingsBtn')?.addEventListener('click', () => document.querySelector('[data-page="meetings"]').click());
-      } catch(e) { container.innerHTML = '<div class="card">Error loading clients</div>'; }
-    } else if (currentUser.role === 'admin') {
-      container.innerHTML = `<div class="card"><div class="card-title">Admin Panel</div><p>Use the Admin tab to manage users and mentors.</p></div>`;
-    }
-  }
+                    document.getElementById('viewMeetingsBtn')?.addEventListener('click', () => document.querySelector('[data-page="meetings"]').click());
+                } catch (e) { container.innerHTML = '<div class="card">Error loading clients</div>'; }
+            } else if (currentUser.role === 'admin') {
+                container.innerHTML = `<div class="card"><div class="card-title">Admin Panel</div><p>Use the Admin tab to manage users and mentors.</p></div>`;
+            }
+        }
 
-  async function startInstantMeeting() {
-    if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
-      try {
-        const res = await api.post(`/api/meetings/instant/${currentUser.assigned_mentor_id}`);
-        window.open(res.data.meeting_link, '_blank');
-      } catch(e) { toast('Could not start meeting'); }
-    } else toast('No mentor assigned');
-  }
+        async function startInstantMeeting() {
+            if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
+                try {
+                    const res = await api.post(`/api/meetings/instant/${currentUser.assigned_mentor_id}`);
+                    window.open(res.data.meeting_link, '_blank');
+                } catch (e) { toast('Could not start meeting'); }
+            } else toast('No mentor assigned');
+        }
 
-  async function loadProfile() {
-    if (!currentUser) return;
-    const infoDiv = document.getElementById('profileInfo');
-    infoDiv.innerHTML = `<p><strong>Username:</strong> ${escapeHtml(currentUser.username)}</p><p><strong>Email:</strong> ${escapeHtml(currentUser.email)}</p><p><strong>Role:</strong> ${escapeHtml(currentUser.role)}</p>`;
-    document.getElementById('editFullname').value = currentUser.full_name || '';
-    document.getElementById('editEmail').value = currentUser.email || '';
-  }
+        async function loadProfile() {
+            if (!currentUser) return;
+            const infoDiv = document.getElementById('profileInfo');
+            infoDiv.innerHTML = `<p><strong>Username:</strong> ${escapeHtml(currentUser.username)}</p><p><strong>Email:</strong> ${escapeHtml(currentUser.email)}</p><p><strong>Role:</strong> ${escapeHtml(currentUser.role)}</p>`;
+            document.getElementById('editFullname').value = currentUser.full_name || '';
+            document.getElementById('editEmail').value = currentUser.email || '';
+        }
 
-  document.getElementById('updateProfileBtn').onclick = async () => {
-    const full_name = document.getElementById('editFullname').value;
-    const email = document.getElementById('editEmail').value;
-    try {
-      await api.put(`/api/users/${currentUser.id}`, { full_name, email });
-      toast('Profile updated');
-      currentUser.full_name = full_name;
-      currentUser.email = email;
-      localStorage.setItem('counseling_user', JSON.stringify(currentUser));
-      loadProfile();
-    } catch(e) { toast('Update failed'); }
-  };
+        document.getElementById('updateProfileBtn').onclick = async () => {
+            const full_name = document.getElementById('editFullname').value;
+            const email = document.getElementById('editEmail').value;
+            try {
+                await api.put(`/api/users/${currentUser.id}`, { full_name, email });
+                toast('Profile updated');
+                currentUser.full_name = full_name;
+                currentUser.email = email;
+                localStorage.setItem('counseling_user', JSON.stringify(currentUser));
+                loadProfile();
+            } catch (e) { toast('Update failed'); }
+        };
 
-  async function loadChatPartners() {
-    if (!currentUser) return;
-    const select = document.getElementById('chatPartnerSelect');
-    select.innerHTML = '<option value="">Select a person</option>';
-    if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
-      try {
-        const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
-        select.innerHTML += `<option value="${res.data.id}">Mentor: ${escapeHtml(res.data.full_name || res.data.username)}</option>`;
-      } catch(e) {}
-    } else if (currentUser.role === 'mentor') {
-      try {
-        const res = await api.get('/api/mentor/clients');
-        res.data.forEach(c => {
-          select.innerHTML += `<option value="${c.id}">${escapeHtml(c.full_name || c.username)} (Client)</option>`;
-        });
-      } catch(e) {}
-    }
-    select.onchange = () => {
-      currentChatPartner = select.value;
-      if (currentChatPartner) loadConversation();
-    };
-  }
+        async function loadChatPartners() {
+            if (!currentUser) return;
+            const select = document.getElementById('chatPartnerSelect');
+            select.innerHTML = '<option value="">Select a person</option>';
+            if (currentUser.role === 'user' && currentUser.assigned_mentor_id) {
+                try {
+                    const res = await api.get(`/api/users/${currentUser.assigned_mentor_id}`);
+                    select.innerHTML += `<option value="${res.data.id}">Mentor: ${escapeHtml(res.data.full_name || res.data.username)}</option>`;
+                } catch (e) { }
+            } else if (currentUser.role === 'mentor') {
+                try {
+                    const res = await api.get('/api/mentor/clients');
+                    res.data.forEach(c => {
+                        select.innerHTML += `<option value="${c.id}">${escapeHtml(c.full_name || c.username)} (Client)</option>`;
+                    });
+                } catch (e) { }
+            }
+            select.onchange = () => {
+                currentChatPartner = select.value;
+                if (currentChatPartner) loadConversation();
+            };
+        }
 
-  async function loadConversation() {
-    if (!currentChatPartner) return;
-    try {
-      const res = await api.get(`/api/messages/conversation/${currentChatPartner}`);
-      const messages = res.data;
-      const container = document.getElementById('chatMessages');
-      container.innerHTML = messages.map(m => `
+        async function loadConversation() {
+            if (!currentChatPartner) return;
+            try {
+                const res = await api.get(`/api/messages/conversation/${currentChatPartner}`);
+                const messages = res.data;
+                const container = document.getElementById('chatMessages');
+                container.innerHTML = messages.map(m => `
         <div class="message-bubble ${m.sender_id === currentUser.id ? 'sent' : 'received'}">
           <div class="bubble">${escapeHtml(m.content)}<div class="text-dim" style="font-size:0.7rem; margin-top:2px;">${new Date(m.timestamp).toLocaleTimeString()}</div></div>
         </div>
       `).join('');
-      container.scrollTop = container.scrollHeight;
-    } catch(e) { console.error('Load conversation error', e); }
-  }
+                container.scrollTop = container.scrollHeight;
+            } catch (e) { console.error('Load conversation error', e); }
+        }
 
-  document.getElementById('sendMsgBtn').onclick = async () => {
-    if (!currentChatPartner) return toast('Select a chat partner');
-    const content = document.getElementById('messageInput').value.trim();
-    if (!content) return;
-    try {
-      await api.post('/api/messages/send', { recipient_id: parseInt(currentChatPartner), content });
-      document.getElementById('messageInput').value = '';
-      loadConversation();
-    } catch(e) { toast('Send failed'); }
-  };
+        document.getElementById('sendMsgBtn').onclick = async () => {
+            if (!currentChatPartner) return toast('Select a chat partner');
+            const content = document.getElementById('messageInput').value.trim();
+            if (!content) return;
+            try {
+                await api.post('/api/messages/send', { recipient_id: parseInt(currentChatPartner), content });
+                document.getElementById('messageInput').value = '';
+                loadConversation();
+            } catch (e) { toast('Send failed'); }
+        };
 
-  function startMessagePolling() {
-    if (messagePollInterval) clearInterval(messagePollInterval);
-    messagePollInterval = setInterval(() => {
-      if (currentChatPartner && document.getElementById('chatPage').classList.contains('active')) loadConversation();
-    }, 3000);
-  }
+        function startMessagePolling() {
+            if (messagePollInterval) clearInterval(messagePollInterval);
+            messagePollInterval = setInterval(() => {
+                if (currentChatPartner && document.getElementById('chatPage').classList.contains('active')) loadConversation();
+            }, 3000);
+        }
 
-  async function loadMeetings() {
-    if (!currentUser) return;
-    try {
-      const res = await api.get('/api/meetings');
-      const meetings = res.data;
-      const container = document.getElementById('meetingsList');
-      if (meetings.length === 0) container.innerHTML = '<div class="text-dim">No upcoming meetings</div>';
-      else {
-        container.innerHTML = meetings.map(m => `
+        async function loadMeetings() {
+            if (!currentUser) return;
+            try {
+                const res = await api.get('/api/meetings');
+                const meetings = res.data;
+                const container = document.getElementById('meetingsList');
+                if (meetings.length === 0) container.innerHTML = '<div class="text-dim">No upcoming meetings</div>';
+                else {
+                    container.innerHTML = meetings.map(m => `
           <div class="meeting-card">
             <div class="flex-between"><strong>${escapeHtml(m.title)}</strong> <span class="btn-ghost" style="padding:2px 6px;">${m.is_global ? 'Global' : 'Personal'}</span></div>
             <div class="text-dim">${escapeHtml(m.description || '')}</div>
@@ -521,60 +710,60 @@
             ${m.meeting_link ? `<a href="${m.meeting_link}" target="_blank" class="btn-ghost" style="display:inline-block; margin-top:8px;">Join Meeting</a>` : ''}
           </div>
         `).join('');
-      }
-      if (currentUser.role === 'mentor') {
-        const clientsRes = await api.get('/api/mentor/clients');
-        const clientSelect = document.getElementById('personalClientSelect');
-        clientSelect.innerHTML = '<option value="">Select Client</option>' + clientsRes.data.map(c => `<option value="${c.id}">${escapeHtml(c.full_name || c.username)}</option>`).join('');
-        document.getElementById('showScheduleBtn').style.display = 'block';
-      } else {
-        document.getElementById('showScheduleBtn').style.display = 'none';
-        document.getElementById('scheduleForm').style.display = 'none';
-      }
-    } catch(e) { toast('Error loading meetings'); }
-  }
+                }
+                if (currentUser.role === 'mentor') {
+                    const clientsRes = await api.get('/api/mentor/clients');
+                    const clientSelect = document.getElementById('personalClientSelect');
+                    clientSelect.innerHTML = '<option value="">Select Client</option>' + clientsRes.data.map(c => `<option value="${c.id}">${escapeHtml(c.full_name || c.username)}</option>`).join('');
+                    document.getElementById('showScheduleBtn').style.display = 'block';
+                } else {
+                    document.getElementById('showScheduleBtn').style.display = 'none';
+                    document.getElementById('scheduleForm').style.display = 'none';
+                }
+            } catch (e) { toast('Error loading meetings'); }
+        }
 
-  document.getElementById('showScheduleBtn').onclick = () => {
-    const form = document.getElementById('scheduleForm');
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  };
-  document.getElementById('meetingType').onchange = function() {
-    const personalSelect = document.getElementById('personalClientSelect');
-    personalSelect.style.display = this.value === 'personal' ? 'block' : 'none';
-  };
-  document.getElementById('scheduleMeetingBtn').onclick = async () => {
-    const title = document.getElementById('meetingTitle').value;
-    const desc = document.getElementById('meetingDesc').value;
-    const startTime = document.getElementById('meetingTime').value;
-    const type = document.getElementById('meetingType').value;
-    if (!title || !startTime) return toast('Fill title and time');
-    const payload = {
-      title, description: desc,
-      start_time: new Date(startTime).toISOString(),
-      is_global: type === 'global'
-    };
-    if (type === 'personal') {
-      const clientId = document.getElementById('personalClientSelect').value;
-      if (!clientId) return toast('Select a client');
-      payload.client_id = parseInt(clientId);
-    }
-    try {
-      await api.post('/api/meetings', payload);
-      toast('Meeting scheduled');
-      document.getElementById('scheduleForm').style.display = 'none';
-      loadMeetings();
-    } catch(e) { toast('Schedule failed'); }
-  };
+        document.getElementById('showScheduleBtn').onclick = () => {
+            const form = document.getElementById('scheduleForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        };
+        document.getElementById('meetingType').onchange = function () {
+            const personalSelect = document.getElementById('personalClientSelect');
+            personalSelect.style.display = this.value === 'personal' ? 'block' : 'none';
+        };
+        document.getElementById('scheduleMeetingBtn').onclick = async () => {
+            const title = document.getElementById('meetingTitle').value;
+            const desc = document.getElementById('meetingDesc').value;
+            const startTime = document.getElementById('meetingTime').value;
+            const type = document.getElementById('meetingType').value;
+            if (!title || !startTime) return toast('Fill title and time');
+            const payload = {
+                title, description: desc,
+                start_time: new Date(startTime).toISOString(),
+                is_global: type === 'global'
+            };
+            if (type === 'personal') {
+                const clientId = document.getElementById('personalClientSelect').value;
+                if (!clientId) return toast('Select a client');
+                payload.client_id = parseInt(clientId);
+            }
+            try {
+                await api.post('/api/meetings', payload);
+                toast('Meeting scheduled');
+                document.getElementById('scheduleForm').style.display = 'none';
+                loadMeetings();
+            } catch (e) { toast('Schedule failed'); }
+        };
 
-  async function loadAdminPanel() {
-    if (!currentUser || currentUser.role !== 'admin') return;
-    try {
-      const usersRes = await api.get('/api/admin/users');
-      const allUsers = usersRes.data;
-      const mentors = allUsers.filter(u => u.role === 'mentor');
-      const clients = allUsers.filter(u => u.role === 'user');
-      const container = document.getElementById('adminContent');
-      container.innerHTML = `
+        async function loadAdminPanel() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            try {
+                const usersRes = await api.get('/api/admin/users');
+                const allUsers = usersRes.data;
+                const mentors = allUsers.filter(u => u.role === 'mentor');
+                const clients = allUsers.filter(u => u.role === 'user');
+                const container = document.getElementById('adminContent');
+                container.innerHTML = `
         <div class="card-title">User Management</div>
         <table style="width:100%; font-size:0.8rem;">
           <thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Action</th></tr></thead>
@@ -593,57 +782,58 @@
           <button class="btn-primary" id="assignMentorBtn">Assign</button>
         </div>
       `;
-      document.getElementById('assignMentorBtn').onclick = async () => {
-        const userId = document.getElementById('adminUserSelect').value;
-        const mentorId = document.getElementById('adminMentorSelect').value;
-        if (!userId || !mentorId) return toast('Select both');
-        await api.post('/api/admin/assign', { user_id: parseInt(userId), mentor_id: parseInt(mentorId) });
-        toast('Mentor assigned');
-        loadAdminPanel();
-      };
-    } catch(e) { toast('Error loading admin panel'); }
-  }
+                document.getElementById('assignMentorBtn').onclick = async () => {
+                    const userId = document.getElementById('adminUserSelect').value;
+                    const mentorId = document.getElementById('adminMentorSelect').value;
+                    if (!userId || !mentorId) return toast('Select both');
+                    await api.post('/api/admin/assign', { user_id: parseInt(userId), mentor_id: parseInt(mentorId) });
+                    toast('Mentor assigned');
+                    loadAdminPanel();
+                };
+            } catch (e) { toast('Error loading admin panel'); }
+        }
 
-  window.deleteUser = async (userId) => {
-    if (confirm('Delete this user?')) {
-      try {
-        await api.delete(`/api/admin/users/${userId}`);
-        toast('User deleted');
-        loadAdminPanel();
-      } catch(e) { toast('Delete failed'); }
-    }
-  };
+        window.deleteUser = async (userId) => {
+            if (confirm('Delete this user?')) {
+                try {
+                    await api.delete(`/api/admin/users/${userId}`);
+                    toast('User deleted');
+                    loadAdminPanel();
+                } catch (e) { toast('Delete failed'); }
+            }
+        };
 
-  // Particle background
-  function initParticles() {
-    const canvas = document.getElementById('particleCanvas');
-    const ctx = canvas.getContext('2d');
-    let w = canvas.width = window.innerWidth;
-    let h = canvas.height = window.innerHeight;
-    const particles = [];
-    for(let i=0;i<40;i++) {
-      particles.push({
-        x: Math.random()*w, y: Math.random()*h, r: Math.random()*2+0.5,
-        vx: (Math.random()-0.5)*0.2, vy: (Math.random()-0.5)*0.2, a: Math.random()*0.2+0.1
-      });
-    }
-    function draw() {
-      ctx.clearRect(0,0,w,h);
-      particles.forEach(p => {
-        p.x += p.vx; p.y += p.vy;
-        if(p.x < 0) p.x = w; if(p.x > w) p.x = 0;
-        if(p.y < 0) p.y = h; if(p.y > h) p.y = 0;
-        ctx.fillStyle = `rgba(201,168,76,${p.a})`;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
-      });
-      requestAnimationFrame(draw);
-    }
-    draw();
-    window.addEventListener('resize', () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; });
-  }
+        // Particle background
+        function initParticles() {
+            const canvas = document.getElementById('particleCanvas');
+            const ctx = canvas.getContext('2d');
+            let w = canvas.width = window.innerWidth;
+            let h = canvas.height = window.innerHeight;
+            const particles = [];
+            for (let i = 0; i < 40; i++) {
+                particles.push({
+                    x: Math.random() * w, y: Math.random() * h, r: Math.random() * 2 + 0.5,
+                    vx: (Math.random() - 0.5) * 0.2, vy: (Math.random() - 0.5) * 0.2, a: Math.random() * 0.2 + 0.1
+                });
+            }
+            function draw() {
+                ctx.clearRect(0, 0, w, h);
+                particles.forEach(p => {
+                    p.x += p.vx; p.y += p.vy;
+                    if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+                    if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+                    ctx.fillStyle = `rgba(201,168,76,${p.a})`;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+            window.addEventListener('resize', () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; });
+        }
 
-  initParticles();
-  checkAuth();
-</script>
+        initParticles();
+        checkAuth();
+    </script>
 </body>
+
 </html>
