@@ -1000,6 +1000,7 @@
             ${u.role === 'user' ? `<button class="btn btn-sm btn-outline" onclick="changeRole(${u.telegram_id},'mentor')">→ Mentor</button>` : ''}
             ${u.role === 'mentor' ? `<button class="btn btn-sm btn-ghost" onclick="disqualifyMentor(${u.telegram_id})">Disqualify</button>` : ''}
             <button class="btn btn-sm btn-danger" onclick="toggleBan(${u.telegram_id},${!u.is_banned})">${u.is_banned ? 'Unban' : 'Ban'}</button>
+            <button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteUser(${u.telegram_id},'${escHtml(u.anonymous_id)}')">Delete</button>
           </div>
         </td>
       </tr>`;
@@ -1035,6 +1036,16 @@
                 await apiFetch(`/api/admin/mentors/${telegram_id}/disqualify`, { method: 'PATCH' });
                 showToast('Mentor disqualified', 'success');
                 loadUsers(usersPage);
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        async function deleteUser(telegram_id, anonymous_id) {
+            if (!confirm(`⚠️ PERMANENT ACTION\n\nDelete user ${anonymous_id}? All messages, sessions, and data will be permanently removed. This cannot be undone.`)) return;
+            try {
+                await apiFetch(`/api/admin/users/${telegram_id}/delete`, { method: 'DELETE' });
+                showToast(`User ${anonymous_id} deleted permanently`, 'success');
+                loadUsers(usersPage);
+                loadStats();
             } catch (e) { showToast(e.message, 'error'); }
         }
 
