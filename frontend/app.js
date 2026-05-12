@@ -98,6 +98,7 @@ async function init() {
 
   try {
     const data = await apiFetch('/api/auth/me');
+    window.ADMIN_ID = data.admin_id;
     if (!data.registered) {
       showOnboarding();
     } else {
@@ -219,6 +220,11 @@ function startApp() {
   keepAlive();
   navigate('dashboard');
   updateMessageBadge();
+
+  // Show admin button if current user is admin
+  if (String(currentUser?.telegram_id) === String(window.ADMIN_ID)) {
+    $('adminBtn')?.classList.remove('hidden');
+  }
 }
 
 // Keep-alive for Render free tier
@@ -247,7 +253,7 @@ async function loadDashboard() {
   loadActivityChart();
 
   // Show admin button if admin
-  if (String(currentUser?.telegram_id) === String(window.ADMIN_TELEGRAM_ID)) {
+  if (String(currentUser?.telegram_id) === String(window.ADMIN_ID)) {
     $('adminBtn')?.classList.remove('hidden');
   }
 }
