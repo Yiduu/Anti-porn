@@ -199,7 +199,7 @@ function navigate(page) {
     case 'chat': 
       loadChat(); 
       // Force input row to appear after a short delay (allow loadChat to finish)
-      setTimeout(forceShowChatInput, 100);
+      setTimeout(forceShowChatInputRow, 200);
       break;
     case 'requests': loadRequests(); break;
     case 'settings': loadSettings(); break;
@@ -208,15 +208,15 @@ function navigate(page) {
 }
 
 // FIX: Direct force-show helper for chat input
-function forceShowChatInput() {
-  const inputRow = document.getElementById('chatInputRow');
-  if (inputRow) {
-    inputRow.style.display = 'flex';
-    inputRow.style.visibility = 'visible';
-    inputRow.style.opacity = '1';
-    console.log('[Force] Chat input row shown');
+function forceShowChatInputRow() {
+  const row = document.getElementById('chatInputRow');
+  if (row) {
+    row.style.display = 'flex';
+    row.style.visibility = 'visible';
+    row.style.opacity = '1';
+    console.log('[FIX] Chat input row forced visible');
   } else {
-    console.error('[Force] chatInputRow element missing!');
+    console.error('[FIX] chatInputRow missing');
   }
 }
 
@@ -526,7 +526,7 @@ async function joinSession(session_id) {
   }
 }
 
-async function createSession(is_group = false, mentee_id = null) {
+async function createSession(is_group = false, mentee_id = null, scheduled_at = null, customTitle = null) {
   try {
     if (!is_group && !mentee_id && currentUser?.role === 'mentor') {
       const res = await apiFetch('/api/users/chat-partner');
@@ -541,17 +541,62 @@ async function createSession(is_group = false, mentee_id = null) {
       }
     }
 
-    const title = is_group ? prompt('Session title (or leave blank):') : 'Private session';
+    const title = customTitle || (is_group ? prompt('Session title (or leave blank):') : 'Private session');
+    const finalScheduled = scheduled_at || new Date().toISOString();
+    
     const data = await apiFetch('/api/sessions/create', {
       method: 'POST',
-      body: { is_group, title, scheduled_at: new Date().toISOString(), mentee_id: mentee_id || null }
+      body: { is_group, title, scheduled_at: finalScheduled, mentee_id: mentee_id || null }
     });
     
     showToast(is_group ? 'Group session created!' : 'Private session created!', 'success');
-    launchJitsi(data.room_name, data.room_password, currentUser.anonymous_id, data.jitsi_token);
+    if (new Date(finalScheduled) <= new Date()) {
+      launchJitsi(data.room_name, data.room_password, currentUser.anonymous_id, data.jitsi_token);
+    } else {
+      loadSessions();
+    }
   } catch (e) {
     showToast(e.message, 'error');
   }
+}
+
+function showScheduleModal(is_group, mentee_id = null) {
+  const modal = document.getElementById('scheduleModal');
+  const titleField = document.getElementById('groupTitleField');
+  const modalTitle = document.getElementById('scheduleModalTitle');
+  const btn = document.getElementById('scheduleBtn');
+  
+  if (!modal) return;
+  
+  modalTitle.textContent = is_group ? 'Schedule Group Session' : 'Schedule 1-on-1 Session';
+  titleField.classList.toggle('hidden', !is_group);
+  
+  // Set default values (1 hour from now)
+  const now = new Date();
+  now.setHours(now.getHours() + 1);
+  document.getElementById('scheduleDate').value = now.toISOString().split('T')[0];
+  document.getElementById('scheduleTime').value = now.toTimeString().slice(0,5);
+  
+  modal.classList.add('open');
+  
+  btn.onclick = () => {
+    const date = document.getElementById('scheduleDate').value;
+    const time = document.getElementById('scheduleTime').value;
+    const title = document.getElementById('scheduleTitle').value || (is_group ? 'Group Session' : '1-on-1 Session');
+    
+    if (!date || !time) {
+      showToast('Please pick date and time', 'error');
+      return;
+    }
+    
+    const scheduledAt = new Date(`${date}T${time}`).toISOString();
+    closeScheduleModal();
+    createSession(is_group, mentee_id, scheduledAt, title);
+  };
+}
+
+function closeScheduleModal() {
+  document.getElementById('scheduleModal')?.classList.remove('open');
 }
 
 function openMenteeSelectModal() {
@@ -583,7 +628,7 @@ function closeMenteeSelectModal() {
 
 function startPrivateSession(menteeId) {
   closeMenteeSelectModal();
-  createSession(false, menteeId);
+  showScheduleModal(false, menteeId);
 }
 
 function launchJitsi(roomName, roomPassword, displayName, token) {
@@ -717,7 +762,7 @@ async function loadChat() {
 
 function switchChatPartner(tid) {
   window.chatState.with = tid;
-  forceShowChatInput(); // FIX: ensure input row visible
+  forceShowChatInputRow(); // FIX: ensure input row visible
   loadMessages(tid);
 }
 
