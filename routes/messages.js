@@ -12,17 +12,28 @@ function containsProfanity(text) {
 module.exports = function messageRoutes(supabase, requireAuth, io, onlineUsers) {
   const router = express.Router();
 
+  // GET /api/messages/unread/count
+  // NOTE: This route must be defined BEFORE /:with to avoid "unread" being
+  // captured as a :with param.
+  router.get('/unread/count', requireAuth, async (req, res) => {
+    const { id } = req.telegramUser;
+    const { count } = await supabase.from('messages').select('id', { count: 'exact', head: true }).eq('to_id', id).eq('is_read', false);
+    res.json({ count: count || 0 });
+  });
+
   // GET /api/messages/:with – conversation with a user
   router.get('/:with', requireAuth, async (req, res) => {
     const { id: my_id } = req.telegramUser;
     const other_id = parseInt(req.params.with);
 
-    // Verify they have an assignment together
+    // FIX: Use a single compound .or() so the query correctly finds a row
+    // where (user_id=me AND mentor_id=other) OR (user_id=other AND mentor_id=me).
+    // The original two chained .or() calls were AND-ed together, which could
+    // never match a single assignment row.
     const { data: assign } = await supabase
       .from('mentorship_assignments')
       .select('id')
-      .or(`user_id.eq.${my_id},mentor_id.eq.${my_id}`)
-      .or(`user_id.eq.${other_id},mentor_id.eq.${other_id}`)
+      .or(`and(user_id.eq.${my_id},mentor_id.eq.${other_id}),and(user_id.eq.${other_id},mentor_id.eq.${my_id})`)
       .eq('is_active', true)
       .single();
 
@@ -51,7 +62,7 @@ module.exports = function messageRoutes(supabase, requireAuth, io, onlineUsers) 
     if (!to_id || !content?.trim()) return res.status(400).json({ error: 'to_id and content required' });
     if (content.length > 2000) return res.status(400).json({ error: 'Message too long' });
 
-    // Verify active assignment between sender and receiver
+    // FIX: Same compound .or() fix applied here for consistency and correctness.
     const { data: assign } = await supabase
       .from('mentorship_assignments')
       .select('id')
@@ -84,14 +95,6 @@ module.exports = function messageRoutes(supabase, requireAuth, io, onlineUsers) 
     }
 
     res.status(201).json(msg);
-
-  });
-
-  // GET /api/messages/unread/count
-  router.get('/unread/count', requireAuth, async (req, res) => {
-    const { id } = req.telegramUser;
-    const { count } = await supabase.from('messages').select('id', { count: 'exact', head: true }).eq('to_id', id).eq('is_read', false);
-    res.json({ count: count || 0 });
   });
 
   return router;
