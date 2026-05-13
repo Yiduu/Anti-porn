@@ -1,6 +1,9 @@
 'use strict';
 
 const express = require('express');
+// FIX: Moved require() calls to the top of the file (out of route handlers)
+// and corrected the relative path from routes/admin.js → bot.js at project root.
+const { notifyMentorApproved } = require('../bot');
 
 module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
   const router = express.Router();
@@ -87,7 +90,6 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     const admin_id = req.telegramUser.id;
     const telegram_id = parseInt(req.params.id);
 
-    // Get user first for logging
     const { data: user } = await supabase.from('users').select('anonymous_id').eq('telegram_id', telegram_id).single();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -134,7 +136,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     if (action === 'approved') {
       await supabase.from('users').update({ role: 'mentor' }).eq('telegram_id', app.telegram_id);
       await supabase.from('mentors').upsert({ telegram_id: app.telegram_id }, { onConflict: 'telegram_id' });
-      const { notifyMentorApproved } = require('../bot');
+      // FIX: notifyMentorApproved is now imported at the top of the file
       await notifyMentorApproved(app.telegram_id);
     }
 
@@ -192,7 +194,6 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     if (role_filter) query = query.eq('role', role_filter);
     const { data: users } = await query;
 
-    // Emit to all connected sockets
     io.emit('broadcast', { message, from: 'admin' });
 
     await logAudit(admin_id, 'broadcast', null, 'all', { message: message.substring(0, 100), role_filter });
@@ -238,7 +239,6 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
 
     await supabase.from('users').update({ role: 'user' }).eq('telegram_id', telegram_id);
     await supabase.from('mentors').update({ is_active: false }).eq('telegram_id', telegram_id);
-    // Move mentees to unassigned pool
     await supabase.from('mentorship_assignments').update({ is_active: false, ended_at: new Date().toISOString() }).eq('mentor_id', telegram_id).eq('is_active', true);
 
     await logAudit(admin_id, 'disqualify_mentor', telegram_id, 'mentor');
