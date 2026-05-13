@@ -3,7 +3,7 @@
 const express = require('express');
 // FIX: Moved require() calls to the top of the file (out of route handlers)
 // and corrected the relative path from routes/admin.js → bot.js at project root.
-const { notifyMentorApproved } = require('../bot');
+const { notifyMentorApproved, broadcastToAll } = require('../bot');
 
 module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
   const router = express.Router();
@@ -15,7 +15,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
 
   // GET /api/admin/stats
   router.get('/stats', async (req, res) => {
-    const today = new Date(); today.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
 
     const [total, todayUsers, mentors, pendingApps, flaggedMsgs, openTickets] = await Promise.all([
       supabase.from('users').select('telegram_id', { count: 'exact', head: true }),
@@ -61,7 +61,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     const telegram_id = parseInt(req.params.id);
     const { role } = req.body;
 
-    if (!['user','mentor'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (!['user', 'mentor'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
     await supabase.from('users').update({ role }).eq('telegram_id', telegram_id);
 
@@ -122,7 +122,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
   router.patch('/applications/:id', async (req, res) => {
     const admin_id = req.telegramUser.id;
     const { action, admin_note } = req.body; // 'approved' | 'rejected'
-    if (!['approved','rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
+    if (!['approved', 'rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
 
     const { data: app, error: appErr } = await supabase
       .from('mentor_applications')
@@ -163,7 +163,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     const { data, error } = await supabase
       .from('support_tickets')
       .select('*, user:telegram_id(anonymous_id)')
-      .in('status', ['open','in_progress'])
+      .in('status', ['open', 'in_progress'])
       .order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
@@ -195,6 +195,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     const { data: users } = await query;
 
     io.emit('broadcast', { message, from: 'admin' });
+    await broadcastToAll(message, role_filter);
 
     await logAudit(admin_id, 'broadcast', null, 'all', { message: message.substring(0, 100), role_filter });
     res.json({ sent_to: users?.length || 0 });
@@ -216,7 +217,7 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
 
   // GET /api/admin/export/:table – CSV export
   router.get('/export/:table', async (req, res) => {
-    const allowed = ['users','messages','video_sessions','mentor_applications','support_tickets'];
+    const allowed = ['users', 'messages', 'video_sessions', 'mentor_applications', 'support_tickets'];
     if (!allowed.includes(req.params.table)) return res.status(400).json({ error: 'Table not exportable' });
 
     const { data, error } = await supabase.from(req.params.table).select('*').limit(10000);
