@@ -3,6 +3,9 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
+// FIX: Moved require() calls to the top of the file (out of route handlers)
+// and corrected the relative path from routes/sessions.js → bot.js at project root.
+const { notifySessionInvite } = require('../bot');
 
 module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) {
   const router = express.Router();
@@ -66,7 +69,7 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
     // Add mentee if provided
     if (mentee_id) {
       await supabase.from('session_participants').insert({ session_id: session.id, telegram_id: mentee_id });
-      
+
       // Notify mentee via socket
       const sock = onlineUsers.get(String(mentee_id));
       if (sock) {
@@ -82,12 +85,12 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
 
       const { data: mentee } = await supabase.from('users').select('chat_id').eq('telegram_id', mentee_id).single();
       if (mentee?.chat_id) {
-        const { notifySessionInvite } = require('../bot');
+        // FIX: notifySessionInvite is now imported at the top of the file
         await notifySessionInvite(mentee_id, {
           session_id: session.id,
           host: hostUser.anonymous_id,
           title: session.title,
-          scheduled_at: session.scheduled_at
+          scheduled_at: session.scheduled_at,
         });
       }
     }
