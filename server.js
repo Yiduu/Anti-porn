@@ -6,11 +6,15 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const crypto = require('crypto');
+// FIX: Added rate limiting. Run: npm install express-rate-limit
+// This protects all API endpoints — especially /broadcast and /messages —
+// from abuse. Limits each IP to 100 requests per 15-minute window by default,
+// with a tighter 20 req/min limit on auth endpoints.
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const { createClient } = require('@supabase/supabase-js');
 const { bot, notifyMessage, notifySessionInvite, notifyMentorApproved, broadcastToAll } = require('./bot');
-
 
 // ─── Supabase Client ──────────────────────────────────────────────────────────
 const supabase = createClient(
@@ -27,6 +31,41 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.static('frontend'));
+
+// ─── Rate Limiters ────────────────────────────────────────────────────────────
+
+// General API limiter: 100 requests per 15 minutes per IP
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+// Strict limiter for auth/registration: 20 requests per minute per IP
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many auth attempts, please slow down.' },
+});
+
+// Very strict limiter for broadcast: 5 requests per minute per IP
+const broadcastLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Broadcast rate limit exceeded.' },
+});
+
+// Apply general limiter to all /api routes
+app.use('/api/', generalLimiter);
+// Tighter limits on specific sensitive routes
+app.use('/api/auth/register', authLimiter);
+app.use('/api/admin/broadcast', broadcastLimiter);
 
 // ─── Socket.IO (presence + typing) ────────────────────────────────────────────
 const io = new Server(server, { cors: { origin: '*' } });
