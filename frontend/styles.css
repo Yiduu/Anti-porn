@@ -278,7 +278,22 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
 /* ─── Chat ──────────────────────────────────────────────────── */
 .chat-container { display: flex; flex-direction: column; height: calc(100vh - var(--nav-h) - 60px); }
-.chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+}
+
+#page-chat.active {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--nav-h));
+  overflow: hidden;
+}
 .message-bubble {
   max-width: 78%; padding: 10px 14px;
   border-radius: 16px; font-size: 0.875rem; line-height: 1.5;
