@@ -617,7 +617,7 @@ async function loadChat() {
     window.pendingChatPartner = null;
 
     const res = await apiFetch('/api/users/chat-partner');
-    console.log('[Chat] partner response:', res);
+    console.log('[Chat] partner response:', res); // Log full response for diagnosis
     const selector = $('chatPartnerSelect');
     
     if (res.type === 'none') {
@@ -629,12 +629,14 @@ async function loadChat() {
       return;
     }
 
+    // FIX: Safety check - force input row to show if we have any partner
+    $('chatInputRow').style.display = 'flex';
+
     if (res.type === 'single') {
       selector.style.display = 'none';
       $('chatWith').style.display = 'block';
       $('chatWith').textContent = res.partner.display_name;
       window.chatState = { with: res.partner.telegram_id, name: res.partner.anonymous_id };
-      $('chatInputRow').style.display = 'flex';
       loadMessages(res.partner.telegram_id);
     } else {
       // Multiple mentees (mentor)
@@ -650,19 +652,32 @@ async function loadChat() {
       
       // Ensure the chat area is visible and properly initialized
       $('chatMessages').innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
-      $('chatInputRow').style.display = 'flex';
       loadMessages(partner.telegram_id);
     }
+
+    // FIX: Fallback timeout to ensure visibility after 500ms
+    setTimeout(() => {
+      const display = window.getComputedStyle($('chatInputRow')).display;
+      if (display === 'none' && res.type !== 'none') {
+        console.warn('[Chat] Input row was still hidden, forcing flex display');
+        $('chatInputRow').style.display = 'flex';
+      }
+    }, 500);
+
   } catch (e) {
     console.error('[Chat] Error:', e);
     $('chatMessages').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
-    $('chatInputRow').style.display = 'none';
+    // FIX: Only hide if mentorship is completely broken
+    if (e.message.includes('No active mentorship')) {
+      $('chatInputRow').style.display = 'none';
+    }
     $('chatWith').textContent = 'Error loading chat';
   }
 }
 
 function switchChatPartner(tid) {
   window.chatState.with = tid;
+  // FIX: Force input row visibility when switching
   $('chatInputRow').style.display = 'flex';
   loadMessages(tid);
 }
