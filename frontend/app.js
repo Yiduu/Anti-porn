@@ -196,10 +196,27 @@ function navigate(page) {
     case 'dashboard': loadDashboard(); break;
     case 'mentors': loadMentors(); break;
     case 'sessions': loadSessions(); break;
-    case 'chat': loadChat(); break;
+    case 'chat': 
+      loadChat(); 
+      // Force input row to appear after a short delay (allow loadChat to finish)
+      setTimeout(forceShowChatInput, 100);
+      break;
     case 'requests': loadRequests(); break;
     case 'settings': loadSettings(); break;
     case 'my-mentees': loadMyMentees(); break;
+  }
+}
+
+// FIX: Direct force-show helper for chat input
+function forceShowChatInput() {
+  const inputRow = document.getElementById('chatInputRow');
+  if (inputRow) {
+    inputRow.style.display = 'flex';
+    inputRow.style.visibility = 'visible';
+    inputRow.style.opacity = '1';
+    console.log('[Force] Chat input row shown');
+  } else {
+    console.error('[Force] chatInputRow element missing!');
   }
 }
 
@@ -700,14 +717,7 @@ async function loadChat() {
 
 function switchChatPartner(tid) {
   window.chatState.with = tid;
-  // FIX: Force input row visibility when switching
-  const inputRow = document.getElementById('chatInputRow');
-  if (inputRow) {
-    inputRow.style.display = 'flex';
-    inputRow.style.visibility = 'visible';
-    inputRow.style.opacity = '1';
-    console.log('[Chat] Input row forced visible (switch)');
-  }
+  forceShowChatInput(); // FIX: ensure input row visible
   loadMessages(tid);
 }
 
