@@ -1,140 +1,37 @@
-'use strict';
+You are fixing a Telegram Mini App (Node.js + Supabase). The bot notifications (new message, session invite, mentor approved) never arrive.
 
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const helmet = require('helmet');
-const crypto = require('crypto');
-require('dotenv').config();
+**Current state:** 
+- bot.js exists but is not loaded in server.js.
+- Notification helper functions are never called from API routes.
+- Bot uses webhook mode but no webhook endpoint is defined.
 
-const { createClient } = require('@supabase/supabase-js');
+**Required fixes (only add, do not delete existing code):**
 
-// ─── Supabase Client ──────────────────────────────────────────────────────────
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+1. In server.js, at the top after other requires, add:
+   const { bot, notifyMessage, notifySessionInvite, notifyMentorApproved, broadcastToAll } = require('./bot');
 
-// ─── Express App ──────────────────────────────────────────────────────────────
-const app = express();
-const server = http.createServer(app);
+2. In routes/messages.js, inside POST /, after the message is inserted and before res.status(201).json(msg), add:
+   const { data: sender } = await supabase.from('users').select('anonymous_id').eq('telegram_id', from_id).single();
+   if (sender && !onlineUsers.has(String(to_id))) {
+     await notifyMessage(to_id, sender.anonymous_id);
+   }
 
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '10kb' }));
-app.use(express.static('frontend'));
+3. In routes/sessions.js, inside POST /create, when mentee_id is provided, after inserting session_participants, add:
+   const { data: mentee } = await supabase.from('users').select('chat_id').eq('telegram_id', mentee_id).single();
+   if (mentee?.chat_id) {
+     await notifySessionInvite(mentee_id, {
+       session_id: session.id,
+       host: hostUser.anonymous_id,
+       title: session.title,
+       scheduled_at: session.scheduled_at
+     });
+   }
 
-// ─── Socket.IO (presence + typing) ────────────────────────────────────────────
-const io = new Server(server, { cors: { origin: '*' } });
-const onlineUsers = new Map(); // telegram_id → socket_id
+4. In routes/admin.js, inside PATCH /applications/:id, when action === 'approved', after updating the user role, add:
+   const { notifyMentorApproved } = require('./bot');
+   await notifyMentorApproved(app.telegram_id);
 
-io.on('connection', (socket) => {
-  socket.on('auth', (telegram_id) => {
-    onlineUsers.set(String(telegram_id), socket.id);
-    socket.data.telegram_id = String(telegram_id);
-    io.emit('presence', { telegram_id, online: true });
-  });
+5. In bot.js, change the bot initialization line to force polling (more reliable on free tier):
+   const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
-  socket.on('typing', ({ to_id }) => {
-    const targetSocket = onlineUsers.get(String(to_id));
-    if (targetSocket) io.to(targetSocket).emit('typing', { from_id: socket.data.telegram_id });
-  });
-
-  socket.on('disconnect', () => {
-    if (socket.data.telegram_id) {
-      onlineUsers.delete(socket.data.telegram_id);
-      io.emit('presence', { telegram_id: socket.data.telegram_id, online: false });
-    }
-  });
-});
-
-// Export for routes
-app.set('supabase', supabase);
-app.set('io', io);
-app.set('onlineUsers', onlineUsers);
-
-// ─── Telegram initData validation ─────────────────────────────────────────────
-function validateTelegramData(initData) {
-  try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get('hash');
-    if (!hash) return null;
-    params.delete('hash');
-
-    const dataCheckString = [...params.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n');
-
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(process.env.TELEGRAM_BOT_TOKEN)
-      .digest();
-
-    const computedHash = crypto
-      .createHmac('sha256', secretKey)
-      .update(dataCheckString)
-      .digest('hex');
-
-    if (computedHash !== hash) return null;
-
-    // Check auth date (max 1 hour old)
-    const authDate = parseInt(params.get('auth_date') || '0', 10);
-    if (Date.now() / 1000 - authDate > 3600) return null;
-
-    const userJson = params.get('user');
-    return userJson ? JSON.parse(userJson) : null;
-  } catch {
-    return null;
-  }
-}
-
-// Auth middleware
-function requireAuth(req, res, next) {
-  // In development/testing mode allow bypass
-  if (process.env.NODE_ENV === 'development') {
-    req.telegramUser = { id: parseInt(req.headers['x-telegram-id'] || '0') };
-    return next();
-  }
-
-  const initData = req.headers['x-telegram-init-data'];
-  if (!initData) return res.status(401).json({ error: 'Missing initData' });
-
-  const user = validateTelegramData(initData);
-  if (!user) return res.status(401).json({ error: 'Invalid initData' });
-
-  req.telegramUser = user;
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  if (String(req.telegramUser.id) !== String(process.env.ADMIN_TELEGRAM_ID)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  next();
-}
-
-// ─── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api/auth',     require('./routes/auth')(supabase, requireAuth));
-app.use('/api/users',    require('./routes/users')(supabase, requireAuth));
-app.use('/api/mentors',  require('./routes/mentors')(supabase, requireAuth));
-app.use('/api/sessions', require('./routes/sessions')(supabase, requireAuth, io, onlineUsers));
-app.use('/api/messages', require('./routes/messages')(supabase, requireAuth, io, onlineUsers));
-app.use('/api/admin',    require('./routes/admin')(supabase, requireAuth, requireAdmin, io));
-app.use('/api/support',  require('./routes/support')(supabase, requireAuth));
-
-// ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', ts: new Date().toISOString() });
-});
-
-// ─── Error handler ────────────────────────────────────────────────────────────
-app.use((err, req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+Output only the exact code changes – show each file with the new lines clearly marked.
