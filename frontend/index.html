@@ -9,6 +9,29 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- ── Modal: Schedule Session ───────────────────────────── -->
+  <div id="scheduleModal" class="modal-overlay">
+    <div class="modal">
+      <h3 id="scheduleModalTitle">Schedule Session</h3>
+      <div id="groupTitleField" class="form-group hidden">
+        <label class="form-label">Session Title</label>
+        <input id="scheduleTitle" class="form-control" placeholder="e.g. Weekly Group Study" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input id="scheduleDate" type="date" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Time</label>
+        <input id="scheduleTime" type="time" class="form-control" />
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-outline flex-1" onclick="closeScheduleModal()">Cancel</button>
+        <button id="scheduleBtn" class="btn btn-primary flex-1">Schedule</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
@@ -215,11 +238,11 @@
     <div class="page-content">
       <div class="section-title">Start a Session (Mentors Only)</div>
       <div class="grid-2 mb-16">
-        <button class="btn btn-primary" onclick="createSession(false)">
+        <button class="btn btn-primary" onclick="showScheduleModal(false)">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
           1-on-1 Session
         </button>
-        <button class="btn btn-outline" onclick="createSession(true)">
+        <button class="btn btn-outline" onclick="showScheduleModal(true)">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Group Session
         </button>
@@ -250,7 +273,7 @@
   </div>
 
   <!-- ── Page: Chat ─────────────────────────────────────────────── -->
-  <div id="page-chat" class="page" >
+  <div id="page-chat" class="page" style="padding-bottom:0">
     <div class="app-header">
       <h2 id="chatWith">Messages</h2>
       <select id="chatPartnerSelect" class="form-control btn-sm" style="width:auto;display:none" onchange="switchChatPartner(this.value)"></select>
@@ -258,8 +281,8 @@
     <div id="chatMessages" class="chat-messages"></div>
     <div id="typingIndicator" class="typing-indicator"></div>
     <div id="chatInputRow" class="chat-input-row" style="display:none">
-      <input id="chatInput" class="chat-input" placeholder="Type a message…" autocomplete="off" oninput="handleChatTyping()" onkeydown="if(event.key==='Enter')sendMessage()" />
-      <button class="chat-send-btn" onclick="sendMessage()" aria-label="Send">
+      <input id="chatInput" class="chat-input" placeholder="Type a message…" oninput="handleChatTyping()" onkeydown="if(event.key==='Enter')sendMessage()" />
+      <button class="chat-send-btn" onclick="sendMessage()">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
