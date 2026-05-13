@@ -1,142 +1,163 @@
 'use strict';
 
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const helmet = require('helmet');
-const crypto = require('crypto');
+const TelegramBot = require('node-telegram-bot-api');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const { createClient } = require('@supabase/supabase-js');
-const { bot, notifyMessage, notifySessionInvite, notifyMentorApproved, broadcastToAll } = require('./bot');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
-// ─── Supabase Client ──────────────────────────────────────────────────────────
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const APP_URL = process.env.MINI_APP_URL || 'https://your-app.com';
+const BOT_USERNAME = process.env.BOT_USERNAME || 'RecoveryBot';
 
-// ─── Express App ──────────────────────────────────────────────────────────────
-const app = express();
-const server = http.createServer(app);
+// ─── Commands ─────────────────────────────────────────────────────────────────
+bot.onText(/\/start(.*)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const param = match[1]?.trim();
 
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '10kb' }));
-app.use(express.static('frontend'));
+  let text = `🙏 Welcome to the Anonymous Christian Recovery Community.\n\nThis is a safe, anonymous space for recovery.\n\nTap below to open the app:`;
 
-// ─── Socket.IO (presence + typing) ────────────────────────────────────────────
-const io = new Server(server, { cors: { origin: '*' } });
-const onlineUsers = new Map(); // telegram_id → socket_id
+  const keyboard = {
+    inline_keyboard: [[{
+      text: '🌟 Open Recovery App',
+      web_app: { url: param ? `${APP_URL}?start=${param}` : APP_URL }
+    }]]
+  };
 
-io.on('connection', (socket) => {
-  socket.on('auth', (telegram_id) => {
-    onlineUsers.set(String(telegram_id), socket.id);
-    socket.data.telegram_id = String(telegram_id);
-    io.emit('presence', { telegram_id, online: true });
-  });
-
-  socket.on('typing', ({ to_id }) => {
-    const targetSocket = onlineUsers.get(String(to_id));
-    if (targetSocket) io.to(targetSocket).emit('typing', { from_id: socket.data.telegram_id });
-  });
-
-  socket.on('disconnect', () => {
-    if (socket.data.telegram_id) {
-      onlineUsers.delete(socket.data.telegram_id);
-      io.emit('presence', { telegram_id: socket.data.telegram_id, online: false });
-    }
-  });
+  await bot.sendMessage(chatId, text, { reply_markup: keyboard, parse_mode: 'Markdown' });
 });
 
-// Export for routes
-app.set('supabase', supabase);
-app.set('io', io);
-app.set('onlineUsers', onlineUsers);
+bot.onText(/\/help/, async (msg) => {
+  await bot.sendMessage(msg.chat.id,
+    `📖 *Recovery App Help*\n\n` +
+    `• /start – Open the recovery app\n` +
+    `• /verse – Get today's Bible verse\n` +
+    `• /status – Check your account status\n\n` +
+    `All interactions are anonymous. Your identity is protected.`,
+    { parse_mode: 'Markdown' }
+  );
+});
 
-// ─── Telegram initData validation ─────────────────────────────────────────────
-function validateTelegramData(initData) {
+bot.onText(/\/verse/, async (msg) => {
+  const { data } = await supabase.from('daily_verses').select('*').eq('is_active', true);
+  if (data?.length) {
+    const day = Math.floor(Date.now() / 86400000);
+    const verse = data[day % data.length];
+    await bot.sendMessage(msg.chat.id, `📖 *${verse.reference}*\n\n_${verse.text}_`, { parse_mode: 'Markdown' });
+  }
+});
+
+bot.onText(/\/status/, async (msg) => {
+  const { data: user } = await supabase.from('users').select('anonymous_id, role').eq('telegram_id', msg.from.id).single();
+  if (!user) {
+    await bot.sendMessage(msg.chat.id, '❌ Not registered. Open the app to register.');
+    return;
+  }
+  await bot.sendMessage(msg.chat.id,
+    `✅ *Account Status*\n\nAnonymous ID: \`${user.anonymous_id}\`\nRole: ${user.role}`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// ─── Notification Helpers ─────────────────────────────────────────────────────
+async function notifyMessage(to_telegram_id, from_anonymous_id) {
+  const { data: settings } = await supabase.from('user_settings').select('notify_messages').eq('telegram_id', to_telegram_id).single();
+  if (settings?.notify_messages === false) return;
+
+  const { data: user } = await supabase.from('users').select('chat_id').eq('telegram_id', to_telegram_id).single();
+  if (!user?.chat_id) return;
+
   try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get('hash');
-    if (!hash) return null;
-    params.delete('hash');
-
-    const dataCheckString = [...params.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n');
-
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(process.env.TELEGRAM_BOT_TOKEN)
-      .digest();
-
-    const computedHash = crypto
-      .createHmac('sha256', secretKey)
-      .update(dataCheckString)
-      .digest('hex');
-
-    if (computedHash !== hash) return null;
-
-    // Check auth date (max 1 hour old)
-    const authDate = parseInt(params.get('auth_date') || '0', 10);
-    if (Date.now() / 1000 - authDate > 3600) return null;
-
-    const userJson = params.get('user');
-    return userJson ? JSON.parse(userJson) : null;
-  } catch {
-    return null;
+    await bot.sendMessage(user.chat_id,
+      `💬 New message from *${from_anonymous_id}*\n\nTap to reply:`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '📱 Open App', web_app: { url: APP_URL } }]] }
+      }
+    );
+  } catch (err) {
+    console.error('Bot notify error:', err.message);
   }
 }
 
-// Auth middleware
-function requireAuth(req, res, next) {
-  // In development/testing mode allow bypass
-  if (process.env.NODE_ENV === 'development') {
-    req.telegramUser = { id: parseInt(req.headers['x-telegram-id'] || '0') };
-    return next();
+async function notifySessionInvite(to_telegram_id, sessionInfo) {
+  const { data: user } = await supabase.from('users').select('chat_id').eq('telegram_id', to_telegram_id).single();
+  if (!user?.chat_id) return;
+
+  const deepLink = `${APP_URL}?start=session_${sessionInfo.session_id}`;
+  try {
+    await bot.sendMessage(user.chat_id,
+      `📹 *Session Invitation*\n\n` +
+      `From: *${sessionInfo.host}*\n` +
+      `Title: ${sessionInfo.title}\n` +
+      `Scheduled: ${new Date(sessionInfo.scheduled_at).toLocaleString()}\n\n` +
+      `Room password will be shown in the app.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🎥 Join Session', web_app: { url: deepLink } }]] }
+      }
+    );
+  } catch (err) {
+    console.error('Bot session notify error:', err.message);
   }
-
-  const initData = req.headers['x-telegram-init-data'];
-  if (!initData) return res.status(401).json({ error: 'Missing initData' });
-
-  const user = validateTelegramData(initData);
-  if (!user) return res.status(401).json({ error: 'Invalid initData' });
-
-  req.telegramUser = user;
-  next();
 }
 
-function requireAdmin(req, res, next) {
-  if (String(req.telegramUser.id) !== String(process.env.ADMIN_TELEGRAM_ID)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  next();
+async function notifyMentorApproved(telegram_id) {
+  const { data: user } = await supabase.from('users').select('chat_id, anonymous_id').eq('telegram_id', telegram_id).single();
+  if (!user?.chat_id) return;
+  try {
+    await bot.sendMessage(user.chat_id,
+      `🎉 *Congratulations, ${user.anonymous_id}!*\n\nYour mentor application has been approved. You are now a mentor in the recovery community.\n\nMay God use you to help others find freedom! 🙏`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) { console.error('Bot approve notify error:', err.message); }
 }
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api/auth',     require('./routes/auth')(supabase, requireAuth));
-app.use('/api/users',    require('./routes/users')(supabase, requireAuth));
-app.use('/api/mentors',  require('./routes/mentors')(supabase, requireAuth));
-app.use('/api/sessions', require('./routes/sessions')(supabase, requireAuth, io, onlineUsers));
-app.use('/api/messages', require('./routes/messages')(supabase, requireAuth, io, onlineUsers));
-app.use('/api/admin',    require('./routes/admin')(supabase, requireAuth, requireAdmin, io));
-app.use('/api/support',  require('./routes/support')(supabase, requireAuth));
+async function broadcastToAll(message, role_filter) {
+  let query = supabase.from('users').select('chat_id').eq('is_banned', false);
+  if (role_filter) query = query.eq('role', role_filter);
+  const { data: users } = await query;
 
-// ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', ts: new Date().toISOString() });
-});
+  for (const user of users || []) {
+    if (!user.chat_id) continue;
+    try {
+      await bot.sendMessage(user.chat_id, `📢 *Announcement*\n\n${message}`, { parse_mode: 'Markdown' });
+      await new Promise(r => setTimeout(r, 50)); // Rate limit
+    } catch {}
+  }
+}
 
-// ─── Error handler ────────────────────────────────────────────────────────────
-app.use((err, req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+// ─── Session reminder job ──────────────────────────────────────────────────────
+async function sendSessionReminders() {
+  const in30 = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const in31 = new Date(Date.now() + 31 * 60 * 1000).toISOString();
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  const { data: sessions } = await supabase
+    .from('video_sessions')
+    .select('*, session_participants(telegram_id)')
+    .eq('status', 'scheduled')
+    .gte('scheduled_at', in30)
+    .lt('scheduled_at', in31);
+
+  for (const session of sessions || []) {
+    for (const { telegram_id } of session.session_participants || []) {
+      const { data: user } = await supabase.from('users').select('chat_id').eq('telegram_id', telegram_id).single();
+      if (!user?.chat_id) continue;
+      try {
+        await bot.sendMessage(user.chat_id,
+          `⏰ *Session Starting Soon!*\n\n${session.title}\nBegins in 30 minutes.\n\nTap to join:`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: [[{ text: '🎥 Join Now', web_app: { url: `${APP_URL}?start=session_${session.id}` } }]] }
+          }
+        );
+      } catch {}
+    }
+  }
+}
+
+// Run reminders every minute
+setInterval(sendSessionReminders, 60 * 1000);
+
+module.exports = { bot, notifyMessage, notifySessionInvite, notifyMentorApproved, broadcastToAll };
