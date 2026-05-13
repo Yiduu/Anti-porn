@@ -8,6 +8,14 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
+bot.on('polling_error', (error) => {
+  if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
+    console.warn('[Bot] 409 Conflict: Another bot instance is likely running with this token. Please check your Render dashboard or other active servers.');
+  } else {
+    console.error('[Bot] Polling error:', error.message);
+  }
+});
+
 const APP_URL = process.env.MINI_APP_URL || 'https://your-app.com';
 
 // ─── Safe send helper – never throws, logs errors ────────────────────────────
