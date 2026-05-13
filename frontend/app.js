@@ -638,13 +638,15 @@ async function loadChat() {
       $('chatWith').textContent = res.partner.display_name;
       window.chatState = { with: res.partner.telegram_id, name: res.partner.anonymous_id };
 
-      // Force chat input row to be visible
-      const inputRow = $('chatInputRow');
+      // Force chat input row to be visible (aggressive)
+      const inputRow = document.getElementById('chatInputRow');
       if (inputRow) {
         inputRow.style.display = 'flex';
-        console.log('[Chat] Input row visibility forced to flex (single)');
+        inputRow.style.visibility = 'visible';
+        inputRow.style.opacity = '1';
+        console.log('[Chat] Input row forced visible (single)');
       } else {
-        console.error('[Chat] chatInputRow element not found!');
+        console.error('[Chat] chatInputRow not found in DOM!');
       }
 
       loadMessages(res.partner.telegram_id);
@@ -660,13 +662,15 @@ async function loadChat() {
       const partner = res.mentees.find(m => String(m.telegram_id) === String(selectedId)) || res.mentees[0];
       window.chatState = { with: partner.telegram_id, name: partner.anonymous_id };
       
-      // Force chat input row to be visible
-      const inputRow = $('chatInputRow');
+      // Force chat input row to be visible (aggressive)
+      const inputRow = document.getElementById('chatInputRow');
       if (inputRow) {
         inputRow.style.display = 'flex';
-        console.log('[Chat] Input row visibility forced to flex (multiple)');
+        inputRow.style.visibility = 'visible';
+        inputRow.style.opacity = '1';
+        console.log('[Chat] Input row forced visible (multiple)');
       } else {
-        console.error('[Chat] chatInputRow element not found!');
+        console.error('[Chat] chatInputRow not found in DOM!');
       }
 
       // Ensure the chat area is visible and properly initialized
@@ -697,10 +701,12 @@ async function loadChat() {
 function switchChatPartner(tid) {
   window.chatState.with = tid;
   // FIX: Force input row visibility when switching
-  const inputRow = $('chatInputRow');
+  const inputRow = document.getElementById('chatInputRow');
   if (inputRow) {
     inputRow.style.display = 'flex';
-    console.log('[Chat] Input row visibility forced to flex (switch)');
+    inputRow.style.visibility = 'visible';
+    inputRow.style.opacity = '1';
+    console.log('[Chat] Input row forced visible (switch)');
   }
   loadMessages(tid);
 }
