@@ -63,7 +63,7 @@ const broadcastLimiter = rateLimit({
 });
 
 // Apply general limiter to all /api routes
-app.use('/api/', generalLimiter);
+app.use('/api', generalLimiter);
 // Tighter limits on specific sensitive routes
 app.use('/api/auth/register', authLimiter);
 app.use('/api/admin/broadcast', broadcastLimiter);
@@ -170,6 +170,12 @@ app.use('/api/support', require('./routes/support')(supabase, requireAuth));
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', ts: new Date().toISOString() });
+});
+
+// ─── SPA Catch-all ────────────────────────────────────────────────────────────
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(require('path').join(__dirname, 'frontend', 'index.html'));
 });
 
 // ─── Error handler ────────────────────────────────────────────────────────────
