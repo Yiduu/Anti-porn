@@ -278,6 +278,18 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
 /* ─── Chat ──────────────────────────────────────────────────── */
 .chat-container { display: flex; flex-direction: column; height: calc(100vh - var(--nav-h) - 60px); }
+
+#page-chat {
+  padding-bottom: 0 !important;
+}
+
+#page-chat.active {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--nav-h));
+  overflow: hidden;
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -286,13 +298,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   flex-direction: column;
   gap: 8px;
   background: var(--bg);
-}
-
-#page-chat.active {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - var(--nav-h));
-  overflow: hidden;
+  min-height: 0; /* critical: allows flex child to shrink below content size */
 }
 .message-bubble {
   max-width: 78%; padding: 10px 14px;
@@ -314,24 +320,29 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .message-bubble.sent .message-time { color: rgba(26,18,0,0.6); text-align: right; }
 
 .chat-input-row {
-  display: flex; gap: 8px; padding: 10px 16px;
+  display: flex; gap: 8px; padding: 10px 16px 14px;
   border-top: 1px solid var(--border-dim);
   background: var(--bg2);
+  flex-shrink: 0; /* prevent row from being squished away */
+  align-items: center;
 }
 .chat-input {
   flex: 1; background: var(--bg3); border: 1px solid var(--border-dim);
   border-radius: 20px; padding: 10px 16px; color: var(--text);
   font-size: 0.875rem; transition: border-color var(--transition);
+  min-width: 0; /* allow input to shrink properly */
 }
-.chat-input:focus { outline: none; border-color: var(--gold); }
+.chat-input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-dim); }
 .chat-send-btn {
-  width: 40px; height: 40px; border-radius: 50%;
+  width: 42px; height: 42px; border-radius: 50%;
   background: linear-gradient(135deg, var(--gold), #A87C2A);
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  flex-shrink: 0; cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
 }
-.chat-send-btn svg { width: 16px; height: 16px; stroke: #1A1200; fill: none; }
-.typing-indicator { font-size: 0.75rem; color: var(--text3); padding: 0 12px; }
+.chat-send-btn:active { opacity: 0.8; transform: scale(0.95); }
+.chat-send-btn svg { width: 16px; height: 16px; stroke: #1A1200; fill: none; stroke-width: 2; }
+.typing-indicator { font-size: 0.75rem; color: var(--text3); padding: 2px 16px; min-height: 18px; flex-shrink: 0; }
 
 /* ─── Video Room ────────────────────────────────────────────── */
 #jitsi-container {
