@@ -473,7 +473,7 @@ async function createSession(is_group = false, mentee_id = null) {
     const title = is_group ? prompt('Session title (or leave blank):') : 'Private session';
     const data = await apiFetch('/api/sessions/create', {
       method: 'POST',
-      body: { is_group, title, scheduled_at: new Date().toISOString(), mentee_id }
+      body: { is_group, title, scheduled_at: new Date().toISOString(), mentee_id: mentee_id || null }
     });
     
     showToast(is_group ? 'Group session created!' : 'Private session created!', 'success');
@@ -592,11 +592,14 @@ async function loadChat() {
       
       const partner = res.mentees.find(m => String(m.telegram_id) === String(selectedId)) || res.mentees[0];
       window.chatState = { with: partner.telegram_id, name: partner.anonymous_id };
+      
+      // Ensure the chat area is visible and properly initialized
+      $('chatMessages').innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
       $('chatInputRow').style.display = 'flex';
       loadMessages(partner.telegram_id);
     }
   } catch (e) {
-    console.error(e);
+    console.error('[Chat] Error:', e);
     $('chatMessages').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
   }
 }
