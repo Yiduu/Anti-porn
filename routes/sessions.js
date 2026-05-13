@@ -28,6 +28,7 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
 
   // POST /api/sessions/create – mentor creates a session
   router.post('/create', requireAuth, async (req, res) => {
+    console.log('Session create request:', req.body);
     const { id: host_id } = req.telegramUser;
     const { is_group, title, scheduled_at, mentee_id } = req.body;
 
