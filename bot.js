@@ -18,6 +18,30 @@ bot.on('polling_error', (error) => {
 
 const APP_URL = process.env.MINI_APP_URL || 'https://your-app.com';
 
+// ─── Formatting helpers ───────────────────────────────────────────────────────
+function formatUserDateTime(dateStr, timezone = 'UTC') {
+  try {
+    return new Date(dateStr).toLocaleString('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: timezone
+    });
+  } catch (e) {
+    return new Date(dateStr).toLocaleString();
+  }
+}
+
+function formatUserDate(dateStr, timezone = 'UTC') {
+  try {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      dateStyle: 'medium',
+      timeZone: timezone
+    });
+  } catch (e) {
+    return new Date(dateStr).toLocaleDateString();
+  }
+}
+
 // ─── Safe send helper – never throws, logs errors ────────────────────────────
 async function safeSend(chatId, text, extra = {}) {
   if (!chatId) return;
@@ -71,7 +95,7 @@ bot.onText(/\/verse/, async (msg) => {
 bot.onText(/\/status/, async (msg) => {
   const { data: user } = await supabase
     .from('users')
-    .select('anonymous_id, role, is_banned, created_at')
+    .select('anonymous_id, role, is_banned, created_at, user_settings(timezone)')
     .eq('telegram_id', msg.from.id)
     .single();
 
@@ -83,17 +107,26 @@ bot.onText(/\/status/, async (msg) => {
     await safeSend(msg.chat.id, '🚫 Your account has been suspended. Contact support via the app.');
     return;
   }
+
+  const tz = user.user_settings?.timezone || 'UTC';
   await safeSend(msg.chat.id,
     `✅ *Account Status*\n\n` +
     `Anonymous ID: \`${user.anonymous_id}\`\n` +
     `Role: *${user.role}*\n` +
-    `Member since: ${new Date(user.created_at).toLocaleDateString()}`
+    `Member since: ${formatUserDate(user.created_at, tz)}`
   );
 });
 
 bot.onText(/\/mysessions/, async (msg) => {
-  const { data: user } = await supabase.from('users').select('telegram_id').eq('telegram_id', msg.from.id).single();
+  const { data: user } = await supabase
+    .from('users')
+    .select('telegram_id, user_settings(timezone)')
+    .eq('telegram_id', msg.from.id)
+    .single();
+
   if (!user) { await safeSend(msg.chat.id, '❌ Not registered.'); return; }
+
+  const tz = user.user_settings?.timezone || 'UTC';
 
   const { data: parts } = await supabase
     .from('session_participants')
@@ -112,7 +145,7 @@ bot.onText(/\/mysessions/, async (msg) => {
   }
 
   const lines = upcoming.map((s, i) =>
-    `${i + 1}. *${s.title}*\n   📅 ${new Date(s.scheduled_at).toLocaleString()}\n   ${s.is_group ? '👥 Group' : '👤 1-on-1'} · ${s.status}`
+    `${i + 1}. *${s.title}*\n   📅 ${formatUserDateTime(s.scheduled_at, tz)}\n   ${s.is_group ? '👥 Group' : '👤 1-on-1'} · ${s.status}`
   ).join('\n\n');
 
   await safeSend(msg.chat.id, `📹 *Your Upcoming Sessions*\n\n${lines}`, { reply_markup: openAppBtn(APP_URL, '📱 Join Session') });
@@ -121,7 +154,7 @@ bot.onText(/\/mysessions/, async (msg) => {
 bot.onText(/\/mymentor/, async (msg) => {
   const { data: assignment } = await supabase
     .from('mentorship_assignments')
-    .select('mentor:mentor_id(anonymous_id, user_settings(display_name, bio, specialization)), assigned_at')
+    .select('mentor:mentor_id(anonymous_id, user_settings(display_name, bio, specialization)), assigned_at, user:user_id(user_settings(timezone))')
     .eq('user_id', msg.from.id)
     .eq('is_active', true)
     .single();
@@ -135,12 +168,13 @@ bot.onText(/\/mymentor/, async (msg) => {
   const name = m.user_settings?.display_name || m.anonymous_id;
   const bio = m.user_settings?.bio || 'No bio provided';
   const spec = m.user_settings?.specialization ? `\nSpecialization: ${m.user_settings.specialization}` : '';
+  const tz = assignment.user?.user_settings?.timezone || 'UTC';
 
   await safeSend(msg.chat.id,
     `👤 *Your Mentor*\n\n` +
     `Name: *${name}*\n` +
     `${bio}${spec}\n\n` +
-    `Assigned: ${new Date(assignment.assigned_at).toLocaleDateString()}`,
+    `Assigned: ${formatUserDate(assignment.assigned_at, tz)}`,
     { reply_markup: openAppBtn(APP_URL, '💬 Message Mentor') }
   );
 });
@@ -169,18 +203,19 @@ async function notifyMessage(to_telegram_id, from_anonymous_id) {
  */
 async function notifySessionInvite(to_telegram_id, sessionInfo) {
   const { data: settings } = await supabase
-    .from('user_settings').select('notify_sessions').eq('telegram_id', to_telegram_id).single();
+    .from('user_settings').select('notify_sessions, timezone').eq('telegram_id', to_telegram_id).single();
   if (settings?.notify_sessions === false) return;
 
   const { data: user } = await supabase.from('users').select('chat_id').eq('telegram_id', to_telegram_id).single();
   if (!user?.chat_id) return;
 
+  const tz = settings?.timezone || 'UTC';
   const deepLink = `${APP_URL}?start=session_${sessionInfo.session_id}`;
   await safeSend(user.chat_id,
     `📹 *Session Invitation!*\n\n` +
     `From: *${sessionInfo.host}*\n` +
     `Title: ${sessionInfo.title}\n` +
-    `Scheduled: ${new Date(sessionInfo.scheduled_at).toLocaleString()}\n\n` +
+    `Scheduled: ${formatUserDateTime(sessionInfo.scheduled_at, tz)}\n\n` +
     `Tap below to join. The room password will be shown inside the app.`,
     { reply_markup: openAppBtn(deepLink, '🎥 Join Session') }
   );
@@ -191,17 +226,18 @@ async function notifySessionInvite(to_telegram_id, sessionInfo) {
  */
 async function notifySessionReminder(to_telegram_id, sessionInfo) {
   const { data: settings } = await supabase
-    .from('user_settings').select('notify_sessions').eq('telegram_id', to_telegram_id).single();
+    .from('user_settings').select('notify_sessions, timezone').eq('telegram_id', to_telegram_id).single();
   if (settings?.notify_sessions === false) return;
 
   const { data: user } = await supabase.from('users').select('chat_id').eq('telegram_id', to_telegram_id).single();
   if (!user?.chat_id) return;
 
+  const tz = settings?.timezone || 'UTC';
   const deepLink = `${APP_URL}?start=session_${sessionInfo.session_id}`;
   await safeSend(user.chat_id,
     `⏰ *Session Starting Soon!*\n\n` +
     `*${sessionInfo.title}* begins in 30 minutes.\n` +
-    `Scheduled: ${new Date(sessionInfo.scheduled_at).toLocaleString()}`,
+    `Scheduled: ${formatUserDateTime(sessionInfo.scheduled_at, tz)}`,
     { reply_markup: openAppBtn(deepLink, '🎥 Join Now') }
   );
 }
@@ -337,14 +373,15 @@ async function sendDailyVerses() {
   // Simpler: join in app code
   const { data: opted } = await supabase
     .from('user_settings')
-    .select('telegram_id, users!inner(chat_id, is_banned)')
+    .select('telegram_id, timezone, users!inner(chat_id, is_banned)')
     .eq('notify_daily_verse', true)
     .eq('users.is_banned', false);
 
   for (const row of opted || []) {
     const chatId = row.users?.chat_id;
     if (!chatId) continue;
-    await safeSend(chatId, `📖 *Daily Verse – ${new Date().toLocaleDateString()}*\n\n*${verse.reference}*\n\n_${verse.text}_`);
+    const tz = row.timezone || 'UTC';
+    await safeSend(chatId, `📖 *Daily Verse – ${formatUserDate(new Date(), tz)}*\n\n*${verse.reference}*\n\n_${verse.text}_`);
     await new Promise(r => setTimeout(r, 60)); // gentle throttle
   }
 }
