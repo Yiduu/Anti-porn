@@ -617,6 +617,7 @@ async function loadChat() {
     window.pendingChatPartner = null;
 
     const res = await apiFetch('/api/users/chat-partner');
+    console.log('[Chat] partner response:', res);
     const selector = $('chatPartnerSelect');
     
     if (res.type === 'none') {
@@ -655,11 +656,14 @@ async function loadChat() {
   } catch (e) {
     console.error('[Chat] Error:', e);
     $('chatMessages').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
+    $('chatInputRow').style.display = 'none';
+    $('chatWith').textContent = 'Error loading chat';
   }
 }
 
 function switchChatPartner(tid) {
   window.chatState.with = tid;
+  $('chatInputRow').style.display = 'flex';
   loadMessages(tid);
 }
 
