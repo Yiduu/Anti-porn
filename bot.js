@@ -6,10 +6,7 @@ require('dotenv').config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
-  polling: process.env.NODE_ENV === 'development',
-  webHook: process.env.NODE_ENV === 'production' ? { port: process.env.PORT || 3001 } : false,
-});
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
 const APP_URL = process.env.MINI_APP_URL || 'https://your-app.com';
 const BOT_USERNAME = process.env.BOT_USERNAME || 'RecoveryBot';
