@@ -637,6 +637,16 @@ async function loadChat() {
       $('chatWith').style.display = 'block';
       $('chatWith').textContent = res.partner.display_name;
       window.chatState = { with: res.partner.telegram_id, name: res.partner.anonymous_id };
+
+      // Force chat input row to be visible
+      const inputRow = $('chatInputRow');
+      if (inputRow) {
+        inputRow.style.display = 'flex';
+        console.log('[Chat] Input row visibility forced to flex (single)');
+      } else {
+        console.error('[Chat] chatInputRow element not found!');
+      }
+
       loadMessages(res.partner.telegram_id);
     } else {
       // Multiple mentees (mentor)
@@ -650,6 +660,15 @@ async function loadChat() {
       const partner = res.mentees.find(m => String(m.telegram_id) === String(selectedId)) || res.mentees[0];
       window.chatState = { with: partner.telegram_id, name: partner.anonymous_id };
       
+      // Force chat input row to be visible
+      const inputRow = $('chatInputRow');
+      if (inputRow) {
+        inputRow.style.display = 'flex';
+        console.log('[Chat] Input row visibility forced to flex (multiple)');
+      } else {
+        console.error('[Chat] chatInputRow element not found!');
+      }
+
       // Ensure the chat area is visible and properly initialized
       $('chatMessages').innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
       loadMessages(partner.telegram_id);
@@ -678,7 +697,11 @@ async function loadChat() {
 function switchChatPartner(tid) {
   window.chatState.with = tid;
   // FIX: Force input row visibility when switching
-  $('chatInputRow').style.display = 'flex';
+  const inputRow = $('chatInputRow');
+  if (inputRow) {
+    inputRow.style.display = 'flex';
+    console.log('[Chat] Input row visibility forced to flex (switch)');
+  }
   loadMessages(tid);
 }
 
