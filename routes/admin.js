@@ -134,6 +134,8 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     if (action === 'approved') {
       await supabase.from('users').update({ role: 'mentor' }).eq('telegram_id', app.telegram_id);
       await supabase.from('mentors').upsert({ telegram_id: app.telegram_id }, { onConflict: 'telegram_id' });
+      const { notifyMentorApproved } = require('../bot');
+      await notifyMentorApproved(app.telegram_id);
     }
 
     await logAudit(admin_id, `application_${action}`, app.telegram_id, 'mentor_application', { app_id: app.id });
