@@ -79,6 +79,66 @@ module.exports = function userRoutes(supabase, requireAuth) {
     res.json(data || null);
   });
 
+  // GET /api/users/chat-partner – returns current user's partner(s)
+  router.get('/chat-partner', requireAuth, async (req, res) => {
+    const { id: telegram_id } = req.telegramUser;
+    
+    const { data: user } = await supabase.from('users').select('role').eq('telegram_id', telegram_id).single();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.role === 'mentor') {
+      const { data: mentees, error } = await supabase
+        .from('mentorship_assignments')
+        .select('user:user_id(telegram_id, anonymous_id, last_active, user_settings(display_name))')
+        .eq('mentor_id', telegram_id)
+        .eq('is_active', true);
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      if (!mentees || mentees.length === 0) {
+        return res.json({ type: 'none' });
+      } else if (mentees.length === 1) {
+        const m = mentees[0].user;
+        return res.json({ 
+          type: 'single', 
+          partner: { 
+            telegram_id: m.telegram_id, 
+            anonymous_id: m.anonymous_id, 
+            display_name: m.user_settings?.display_name || m.anonymous_id 
+          } 
+        });
+      } else {
+        const list = mentees.map(m => ({
+          telegram_id: m.user.telegram_id,
+          anonymous_id: m.user.anonymous_id,
+          display_name: m.user.user_settings?.display_name || m.user.anonymous_id,
+          last_active: m.user.last_active
+        }));
+        return res.json({ type: 'multiple', mentees: list });
+      }
+    } else {
+      const { data: assignment, error } = await supabase
+        .from('mentorship_assignments')
+        .select('mentor:mentor_id(telegram_id, anonymous_id, user_settings(display_name))')
+        .eq('user_id', telegram_id)
+        .eq('is_active', true)
+        .single();
+
+      if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
+      if (!assignment) return res.json({ type: 'none' });
+
+      const m = assignment.mentor;
+      return res.json({ 
+        type: 'single', 
+        partner: { 
+          telegram_id: m.telegram_id, 
+          anonymous_id: m.anonymous_id, 
+          display_name: m.user_settings?.display_name || m.anonymous_id 
+        } 
+      });
+    }
+  });
+
   // GET /api/users/weekly-activity
   router.get('/weekly-activity', requireAuth, async (req, res) => {
     const days = 7;
