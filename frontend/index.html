@@ -248,6 +248,7 @@
   <div id="page-chat" class="page" style="padding-bottom:0">
     <div class="app-header">
       <h2 id="chatWith">Messages</h2>
+      <select id="chatPartnerSelect" class="form-control btn-sm" style="width:auto;display:none" onchange="switchChatPartner(this.value)"></select>
     </div>
     <div id="chatMessages" class="chat-messages"></div>
     <div id="typingIndicator" class="typing-indicator"></div>
@@ -382,6 +383,8 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       <span data-i18n="Sessions">Sessions</span>
     </div>
+    <div id="nav-chat" class="nav-item" onclick="navigate('chat')" style="position:relative">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       <span id="chatBadge" class="nav-badge" style="display:none">0</span>
       <span data-i18n="Chat">Chat</span>
     </div>
@@ -398,6 +401,7 @@
       <span data-i18n="Settings">Settings</span>
     </div>
   </nav>
+
 </div><!-- /#app -->
 
 <!-- ─── Apply to be Mentor Modal ──────────────────────────────── -->
@@ -420,6 +424,17 @@
       <button class="btn btn-ghost flex-1" onclick="closeApplyModal()">Cancel</button>
       <button class="btn btn-primary flex-1" onclick="submitApplication()">Submit Application</button>
     </div>
+  </div>
+</div>
+
+<!-- ─── Select Mentee Modal (for Sessions) ────────────────────── -->
+<div id="menteeSelectModal" class="modal-overlay" onclick="if(event.target===this)closeMenteeSelectModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Select Mentee</div>
+    <p class="text-sm text-dim mb-16">Choose which mentee to invite to this private session.</p>
+    <div id="menteeSelectList" style="display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto"></div>
+    <button class="btn btn-ghost btn-full mt-16" onclick="closeMenteeSelectModal()">Cancel</button>
   </div>
 </div>
 
