@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { notifyMentorshipRequest, notifyMentorshipAccepted, notifyMentorshipRejected } = require('../bot');
 
 module.exports = function mentorRoutes(supabase, requireAuth) {
   const router = express.Router();
@@ -40,6 +41,12 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
 
     const { data, error } = await supabase.from('mentorship_requests').insert({ user_id, mentor_id, message }).select().single();
     if (error) return res.status(500).json({ error: error.message });
+
+    // Notify mentor
+    const { data: requester } = await supabase.from('users').select('anonymous_id, user_settings(display_name)').eq('telegram_id', user_id).single();
+    const requesterName = requester?.user_settings?.display_name || requester?.anonymous_id || 'A user';
+    await notifyMentorshipRequest(mentor_id, requesterName);
+
     res.status(201).json(data);
   });
 
@@ -60,7 +67,7 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
     const { id: mentor_id } = req.telegramUser;
     const { action } = req.body; // 'accepted' | 'rejected'
 
-    if (!['accepted','rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
+    if (!['accepted', 'rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
 
     const { data: reqData, error: reqErr } = await supabase
       .from('mentorship_requests')
@@ -75,6 +82,16 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
     // If accepted → create assignment
     if (action === 'accepted') {
       await supabase.from('mentorship_assignments').insert({ user_id: reqData.user_id, mentor_id });
+    }
+
+    // Notify user
+    const { data: mentor } = await supabase.from('users').select('anonymous_id, user_settings(display_name)').eq('telegram_id', mentor_id).single();
+    const mentorName = mentor?.user_settings?.display_name || mentor?.anonymous_id || 'Your mentor';
+    
+    if (action === 'accepted') {
+      await notifyMentorshipAccepted(reqData.user_id, mentorName);
+    } else {
+      await notifyMentorshipRejected(reqData.user_id, mentorName);
     }
 
     res.json(reqData);
