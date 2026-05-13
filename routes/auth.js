@@ -1,7 +1,6 @@
 'use strict';
 
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
 
 module.exports = function authRoutes(supabase, requireAuth) {
   const router = express.Router();
@@ -52,10 +51,11 @@ module.exports = function authRoutes(supabase, requireAuth) {
     const { data: nickCollision } = await supabase.from('users').select('anonymous_id').eq('anonymous_id', nickname).single();
     if (nickCollision) return res.status(409).json({ error: 'Nickname already taken', nickname_taken: true });
 
-    // Generate/Validate unique anonymous_id
-    let anonymous_id = nickname;
-    let attempts = 0;
-    
+    // FIX: Removed unused `attempts` variable. The retry loop was removed but
+    // the variable declaration was left behind. The double-check below is
+    // sufficient to guard against race conditions at registration time.
+    const anonymous_id = nickname;
+
     // Double check for race condition
     const { data: collision } = await supabase.from('users').select('anonymous_id').eq('anonymous_id', anonymous_id).single();
     if (collision) return res.status(409).json({ error: 'Nickname taken', nickname_taken: true });
