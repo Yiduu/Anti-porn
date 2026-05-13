@@ -88,15 +88,27 @@ CREATE INDEX idx_mentorship_req_mentor ON mentorship_requests(mentor_id, status)
 CREATE INDEX idx_mentorship_req_user ON mentorship_requests(user_id);
 
 -- Active mentor-mentee assignments
+-- FIX: Replaced UNIQUE(user_id, is_active) table constraint with a partial
+-- unique index on (user_id) WHERE is_active = true.
+--
+-- The old constraint meant a user could only ever have ONE ended assignment
+-- (is_active = false), because (user_id, false) would collide on the second
+-- ended row. The partial index below enforces the real business rule:
+-- "a user may only have one ACTIVE assignment at a time" while allowing
+-- unlimited historical (ended) assignments.
 CREATE TABLE IF NOT EXISTS mentorship_assignments (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
   mentor_id       BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
   is_active       BOOLEAN NOT NULL DEFAULT true,
   assigned_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  ended_at        TIMESTAMPTZ,
-  UNIQUE(user_id, is_active)  -- only one active assignment per user
+  ended_at        TIMESTAMPTZ
 );
+
+-- Enforces only one active assignment per user (allows many ended ones)
+CREATE UNIQUE INDEX one_active_assignment_per_user
+  ON mentorship_assignments(user_id)
+  WHERE is_active = true;
 
 CREATE INDEX idx_assignments_mentor ON mentorship_assignments(mentor_id, is_active);
 CREATE INDEX idx_assignments_user ON mentorship_assignments(user_id, is_active);
@@ -245,13 +257,19 @@ FOR EACH ROW EXECUTE FUNCTION update_last_active();
 -- Auto-delete messages older than 30 days (Supabase pg_cron job)
 -- Run: SELECT cron.schedule('delete-old-messages', '0 2 * * *', 'DELETE FROM messages WHERE created_at < NOW() - INTERVAL ''30 days''');
 
--- Update mentorship_assignments unique constraint for active
+-- FIX: Updated trigger function to work correctly with the new partial unique
+-- index. Instead of relying on the broken UNIQUE(user_id, is_active) constraint,
+-- the trigger now directly deactivates any other active assignment for the user
+-- whenever a new active one is inserted or updated.
 CREATE OR REPLACE FUNCTION enforce_single_active_assignment()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.is_active = true THEN
-    UPDATE mentorship_assignments SET is_active = false, ended_at = NOW()
-    WHERE user_id = NEW.user_id AND is_active = true AND id != NEW.id;
+    UPDATE mentorship_assignments
+    SET is_active = false, ended_at = NOW()
+    WHERE user_id = NEW.user_id
+      AND is_active = true
+      AND id != NEW.id;
   END IF;
   RETURN NEW;
 END;
