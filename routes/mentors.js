@@ -80,7 +80,7 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
     res.json(reqData);
   });
 
-  // GET /api/mentors/my-mentees – mentor's assigned mentees
+  // GET /api/mentors/my-mentees – list active mentees
   router.get('/my-mentees', requireAuth, async (req, res) => {
     const { id: mentor_id } = req.telegramUser;
     const { data, error } = await supabase
@@ -90,6 +90,43 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
       .eq('is_active', true);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
+  });
+
+  // GET /api/mentors/my-mentees/stats – session counts per mentee
+  router.get('/my-mentees/stats', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { data: assignments } = await supabase.from('mentorship_assignments').select('user_id').eq('mentor_id', mentor_id).eq('is_active', true);
+    if (!assignments) return res.json({});
+    const stats = {};
+    for (const a of assignments) {
+      const { count } = await supabase.from('session_participants').select('session_id', { count: 'exact', head: true }).eq('telegram_id', a.user_id);
+      stats[a.user_id] = count || 0;
+    }
+    res.json(stats);
+  });
+
+  // POST /api/mentors/notes – add/update private note
+  router.post('/notes', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { mentee_id, content } = req.body;
+    const { data, error } = await supabase.from('mentor_notes').upsert({ mentor_id, mentee_id, content, updated_at: new Date().toISOString() }, { onConflict: 'mentor_id,mentee_id' }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // GET /api/mentors/notes/:mentee_id – get private note
+  router.get('/notes/:mentee_id', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { data } = await supabase.from('mentor_notes').select('content').eq('mentor_id', mentor_id).eq('mentee_id', req.params.mentee_id).single();
+    res.json(data || { content: '' });
+  });
+
+  // DELETE /api/mentors/end-mentorship/:assignment_id
+  router.delete('/end-mentorship/:assignment_id', requireAuth, async (req, res) => {
+    const { id: mentor_id } = req.telegramUser;
+    const { error } = await supabase.from('mentorship_assignments').update({ is_active: false, ended_at: new Date().toISOString() }).eq('id', req.params.assignment_id).eq('mentor_id', mentor_id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
   });
 
   return router;
