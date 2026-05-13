@@ -26,11 +26,23 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
   // POST /api/sessions/create – mentor creates a session
   router.post('/create', requireAuth, async (req, res) => {
     const { id: host_id } = req.telegramUser;
-    const { is_group, title, scheduled_at, participant_ids } = req.body;
+    const { is_group, title, scheduled_at, mentee_id } = req.body;
 
     // Verify host is a mentor
     const { data: hostUser } = await supabase.from('users').select('role, anonymous_id').eq('telegram_id', host_id).single();
     if (!hostUser || hostUser.role !== 'mentor') return res.status(403).json({ error: 'Only mentors can create sessions' });
+
+    // If mentee_id provided, verify assignment
+    if (mentee_id) {
+      const { data: assignment } = await supabase
+        .from('mentorship_assignments')
+        .select('id')
+        .eq('mentor_id', host_id)
+        .eq('user_id', mentee_id)
+        .eq('is_active', true)
+        .single();
+      if (!assignment) return res.status(403).json({ error: 'User is not your active mentee' });
+    }
 
     const roomName = `recovery-${uuidv4()}`;
     const roomPassword = generateRoomPassword();
@@ -51,30 +63,36 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
     // Add host as participant
     await supabase.from('session_participants').insert({ session_id: session.id, telegram_id: host_id });
 
-    // Add other participants
-    if (participant_ids?.length) {
-      await supabase.from('session_participants').insert(
-        participant_ids.map(tid => ({ session_id: session.id, telegram_id: tid }))
-      );
-      // Notify participants via socket
-      for (const tid of participant_ids) {
-        const sock = onlineUsers.get(String(tid));
-        if (sock) {
-          io.to(sock).emit('session_invite', {
-            session_id: session.id,
-            room_name: roomName,
-            room_password: roomPassword,
-            host: hostUser.anonymous_id,
-            title: session.title,
-            scheduled_at: session.scheduled_at,
-          });
-        }
+    // Add mentee if provided
+    if (mentee_id) {
+      await supabase.from('session_participants').insert({ session_id: session.id, telegram_id: mentee_id });
+      
+      // Notify mentee via socket
+      const sock = onlineUsers.get(String(mentee_id));
+      if (sock) {
+        io.to(sock).emit('session_invite', {
+          session_id: session.id,
+          room_name: roomName,
+          room_password: roomPassword,
+          host: hostUser.anonymous_id,
+          title: session.title,
+          scheduled_at: session.scheduled_at,
+        });
+      }
+
+      const { data: mentee } = await supabase.from('users').select('chat_id').eq('telegram_id', mentee_id).single();
+      if (mentee?.chat_id) {
+        const { notifySessionInvite } = require('../bot');
+        await notifySessionInvite(mentee_id, {
+          session_id: session.id,
+          host: hostUser.anonymous_id,
+          title: session.title,
+          scheduled_at: session.scheduled_at
+        });
       }
     }
 
-    // Generate JWT if configured
     const jitsiToken = generateJitsiJWT(roomName, { displayName: hostUser.anonymous_id, moderator: true });
-
     res.status(201).json({ session, room_name: roomName, room_password: roomPassword, jitsi_token: jitsiToken });
   });
 
