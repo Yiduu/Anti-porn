@@ -109,6 +109,16 @@ async function init() {
       }
       startApp();
     }
+    
+    // Deep link handling
+    const urlParams = new URLSearchParams(window.location.search);
+    const startParam = urlParams.get('start');
+    if (startParam && startParam.startsWith('session_')) {
+      const sessionId = startParam.replace('session_', '');
+      setTimeout(() => {
+        joinSession(sessionId);
+      }, 1000);
+    }
   } catch (e) {
     console.error(e);
     showToast('Connection error', 'error');
@@ -138,8 +148,10 @@ function connectSocket() {
     }
   });
   socket.on('session_invite', (session) => {
-    showToast(`📹 Session invite: ${session.title}`);
-    if (currentPage === 'sessions') loadSessions();
+    showToast(`📹 Session invite: ${session.title}`, 'info');
+    if (confirm('A new session has been scheduled. Go to Sessions page to join?')) {
+      navigate('sessions');
+    }
   });
   socket.on('broadcast', ({ message }) => {
     showToast(`📢 ${message}`);
@@ -423,18 +435,44 @@ async function respondToRequest(requestId, action) {
 
 // ─── Sessions ─────────────────────────────────────────────────
 async function loadSessions() {
+  // Load private sessions (1-on-1 and group where user is participant)
+  try {
+    const mySessions = await apiFetch('/api/sessions/my');
+    const privateContainer = document.getElementById('privateSessionsList');
+    if (!privateContainer) return;
+    if (mySessions.length === 0) {
+      privateContainer.innerHTML = '<div class="empty-state">No active or upcoming private sessions.</div>';
+    } else {
+      privateContainer.innerHTML = mySessions.map(s => {
+        const session = s.session;
+        const isGroup = session.is_group;
+        const title = session.title || (isGroup ? 'Group Session' : 'Private Session');
+        const scheduled = new Date(session.scheduled_at).toLocaleString();
+        return `
+          <div class="session-item">
+            <div class="session-icon">${isGroup ? '👥' : '👤'}</div>
+            <div class="session-body">
+              <div class="session-title">${escapeHtml(title)}</div>
+              <div class="session-sub">${scheduled} • ${session.status}</div>
+            </div>
+            ${session.status === 'scheduled' ? `<button class="btn btn-primary btn-sm" onclick="joinSession('${session.id}')">Join</button>` : '<span class="chip chip-green">Completed</span>'}
+          </div>`;
+      }).join('');
+    }
+  } catch (e) { console.error('Error loading private sessions', e); }
+
+  // Load upcoming group sessions
   try {
     const upcoming = await apiFetch('/api/sessions/upcoming');
-    const container = $('upcomingSessions');
+    const container = document.getElementById('upcomingSessions');
+    if (!container) return;
     if (!upcoming.length) {
       container.innerHTML = '<div class="empty-state"><span>No upcoming group sessions</span></div>';
       return;
     }
     container.innerHTML = upcoming.map(s => `
       <div class="session-item">
-        <div class="session-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-        </div>
+        <div class="session-icon">👥</div>
         <div class="session-body">
           <div class="session-title">${escapeHtml(s.title)}</div>
           <div class="session-sub">${new Date(s.scheduled_at).toLocaleString()}</div>
@@ -442,7 +480,9 @@ async function loadSessions() {
         <button class="btn btn-primary btn-sm" onclick="joinSession('${s.id}')">Join</button>
       </div>`).join('');
   } catch (e) {
-    $('upcomingSessions').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
+    if (document.getElementById('upcomingSessions')) {
+      document.getElementById('upcomingSessions').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
+    }
   }
 }
 
