@@ -54,7 +54,21 @@ function timeAgo(dateStr) {
 }
 
 function formatTime(dateStr) {
-  return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const tz = currentUser?.user_settings?.timezone || 'UTC';
+  try {
+    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: tz });
+  } catch (e) {
+    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+}
+
+function formatDateTime(dateStr) {
+  const tz = currentUser?.user_settings?.timezone || 'UTC';
+  try {
+    return new Date(dateStr).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short', timeZone: tz });
+  } catch (e) {
+    return new Date(dateStr).toLocaleString();
+  }
 }
 
 function escapeHtml(str) {
@@ -447,7 +461,7 @@ async function loadSessions() {
         const session = s.session;
         const isGroup = session.is_group;
         const title = session.title || (isGroup ? 'Group Session' : 'Private Session');
-        const scheduled = new Date(session.scheduled_at).toLocaleString();
+        const scheduled = formatDateTime(session.scheduled_at);
         return `
           <div class="session-item">
             <div class="session-icon">${isGroup ? '👥' : '👤'}</div>
@@ -475,7 +489,7 @@ async function loadSessions() {
         <div class="session-icon">👥</div>
         <div class="session-body">
           <div class="session-title">${escapeHtml(s.title)}</div>
-          <div class="session-sub">${new Date(s.scheduled_at).toLocaleString()}</div>
+          <div class="session-sub">${formatDateTime(s.scheduled_at)}</div>
         </div>
         <button class="btn btn-primary btn-sm" onclick="joinSession('${s.id}')">Join</button>
       </div>`).join('');
