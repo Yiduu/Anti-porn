@@ -28,6 +28,11 @@ const app = express();
 app.set('trust proxy', 1); // Trust Render's proxy
 const server = http.createServer(app);
 
+app.use((req, res, next) => {
+  console.log(`[Server] ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '10kb' }));
