@@ -77,7 +77,14 @@ module.exports = function messageRoutes(supabase, requireAuth, io, onlineUsers) 
       io.to(recipientSocket).emit('new_message', msg);
     }
 
+    const { data: sender } = await supabase.from('users').select('anonymous_id').eq('telegram_id', from_id).single();
+    if (sender && !onlineUsers.has(String(to_id))) {
+      const { notifyMessage } = require('../bot');
+      await notifyMessage(to_id, sender.anonymous_id);
+    }
+
     res.status(201).json(msg);
+
   });
 
   // GET /api/messages/unread/count
