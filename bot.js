@@ -151,8 +151,13 @@ bot.on('message', async (msg) => {
 
   if (text.startsWith('/')) {
     const command = text.split(' ')[0].toLowerCase();
+    const state = getState(chatId);
     
-    if (command === '/start') {
+    // Check if this is a flow-specific command that should bypass the standard command return
+    const isFlowCommand = command === '/skip' && state && (state.step === 'awaiting_mentor_q3' || state.step === 'mentor_req_msg');
+    
+    if (!isFlowCommand) {
+        if (command === '/start') {
       const { data: user } = await supabase.from('users').select('*').eq('telegram_id', chatId).single();
       if (!user) await startRegistration(chatId);
       else await showMainMenu(chatId, `Welcome back, *${user.anonymous_id}*!`);
@@ -211,7 +216,8 @@ bot.on('message', async (msg) => {
         await safeSend(chatId, "✅ Sent.");
         return;
     }
-    return;
+        return;
+    }
   }
 
   // Handle Flow Steps
@@ -258,6 +264,14 @@ bot.on('message', async (msg) => {
             await safeSend(chatId, "❌ Failed to submit application. Please try again later.");
         } else {
             await safeSend(chatId, "Thank you for applying. Your application has been submitted for admin review. You will be notified once a decision is made.");
+            
+            // Notify Admin
+            const adminId = process.env.ADMIN_CHAT_ID;
+            if (adminId) {
+                const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', chatId).single();
+                const adminMsg = `🆕 *New Mentor Application*\n\nUser: *${u?.anonymous_id || chatId}*\n\n*Q1 (Free since):* ${state.tempData.q1}\n*Q2 (Steps):* ${state.tempData.q2}\n*Q3 (Other):* ${q3 || '_None_'}`;
+                await safeSend(adminId, adminMsg);
+            }
         }
         
         clearState(chatId);
@@ -626,7 +640,10 @@ async function handleDailyVerse(chatId) {
     if (v) {
         let t = `📖 *Verse*\n*${v.reference}*\n\n${v.text}`;
         const { data: s } = await supabase.from('user_settings').select('language').eq('telegram_id', chatId).single();
-        if (s?.language === 'am') t += `\n\n🇪🇹 *Amharic:*\n_${await translateToAmharic(v.text)}_`;
+        if (s?.language === 'am') {
+            const amVerse = await getAmharicVerse(v.text);
+            if (amVerse) t += `\n\n🇪🇹 *Amharic:*\n_${amVerse}_`;
+        }
         await safeSend(chatId, t);
     }
 }
@@ -666,6 +683,24 @@ async function broadcastToAll(message, role_filter) {
         }
     }
 }
+
+// ─── Scheduler ────────────────────────────────────────────────────────────────
+setInterval(async () => {
+    const now = new Date(); if (now.getUTCMinutes() !== 0) return;
+    const { data: opted } = await supabase.from('user_settings').select('telegram_id, language').eq('notify_daily_verse', true).eq('verse_time', now.getUTCHours());
+    const { data: vs } = await supabase.from('daily_verses').select('*').eq('is_active', true);
+    const v = vs?.[Math.floor(Date.now() / 86400000) % vs.length];
+    if (v && opted?.length) {
+        for (const u of opted) {
+            let t = `📖 *Daily Verse*\n*${v.reference}*\n\n${v.text}`;
+            if (u.language === 'am') {
+                const amVerse = await getAmharicVerse(v.text);
+                if (amVerse) t += `\n\n🇪🇹 *Amharic:*\n_${amVerse}_`;
+            }
+            await safeSend(u.telegram_id, t);
+        }
+    }
+}, 60 * 1000);
 
 // ─── Polling for Mentor Application Status ────────────────────────────────────
 let lastAppCheck = new Date().toISOString();
