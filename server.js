@@ -171,6 +171,7 @@ app.use('/api/sessions', require('./routes/sessions')(supabase, requireAuth, io,
 app.use('/api/messages', require('./routes/messages')(supabase, requireAuth, io, onlineUsers));
 app.use('/api/admin', require('./routes/admin')(supabase, requireAuth, requireAdmin, io));
 app.use('/api/support', require('./routes/support')(supabase, requireAuth));
+app.use('/api/topics', require('./routes/topics')(supabase, requireAuth, requireAdmin));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
