@@ -71,3 +71,4 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 
 -- 7. User Settings Update
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS verse_time INTEGER DEFAULT 7;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en';
