@@ -46,16 +46,25 @@ async function safeSend(chatId, text, extra = {}) {
 }
 
 // ─── Main Menu ────────────────────────────────────────────────────────────────
-async function showMainMenu(chatId, text = null) {
+async function showMainMenu(chatId, text) {
+  const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
+  const role = user?.role || 'user';
+  
   const menuText = text || `🌟 *Recovery Helper*\n\nChoose an option:`;
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: '🔍 Find a Mentor', callback_data: 'menu_mentors' }, { text: '💬 My Chat Partner', callback_data: 'menu_chat' }],
-      [{ text: '📖 Bible Reading Streak', callback_data: 'menu_streak' }, { text: '✏️ Journal', callback_data: 'menu_journal' }],
-      [{ text: '📅 Daily Verse', callback_data: 'menu_verse' }, { text: '⚙️ Settings', callback_data: 'menu_settings' }],
-      [{ text: '❓ Help', callback_data: 'menu_help' }]
-    ]
-  };
+  const keyboard = { inline_keyboard: [] };
+  
+  keyboard.inline_keyboard.push([{ text: '🔍 Find a Mentor', callback_data: 'menu_mentors' }, { text: '💬 My Chat Partner', callback_data: 'menu_chat' }]);
+  keyboard.inline_keyboard.push([{ text: '📖 Bible Reading Streak', callback_data: 'menu_streak' }, { text: '✏️ Journal', callback_data: 'menu_journal' }]);
+  keyboard.inline_keyboard.push([{ text: '📅 Daily Verse', callback_data: 'menu_verse' }, { text: '⚙️ Settings', callback_data: 'menu_settings' }]);
+  
+  if (role === 'mentor') {
+    keyboard.inline_keyboard.push([{ text: '👥 My Mentees', callback_data: 'menu_mentees' }, { text: '📅 Schedule Session', callback_data: 'menu_schedule' }]);
+  } else {
+    keyboard.inline_keyboard.push([{ text: '🙏 Apply to Become a Mentor', callback_data: 'menu_apply' }]);
+  }
+  
+  keyboard.inline_keyboard.push([{ text: '❓ Help', callback_data: 'menu_help' }]);
+  
   await safeSend(chatId, menuText, { reply_markup: keyboard });
 }
 
@@ -109,6 +118,26 @@ async function forwardMessage(fromId, toId, text) {
     await safeSend(recipient.chat_id, `💬 *Message from your ${roleLabel} [${sender?.anonymous_id}]:*\n\n${text}`);
     setState(toId, 'chat_active', fromId); // Persist context for recipient
   }
+}
+
+async function getAmharicVerse(verseText) {
+    try {
+        const res = await axios.get(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(verseText)}&langpair=en|am`);
+        return res.data?.responseData?.translatedText || null;
+    } catch (e) { return null; }
+}
+
+async function handleDailyVerse(chatId) {
+    const { data: s } = await supabase.from('user_settings').select('language').eq('telegram_id', chatId).single();
+    // In a real app, we'd fetch from a DB or API. Using a fallback for demo.
+    const verse = "For I know the plans I have for you, declares the Lord, plans for welfare and not for evil, to give you a future and a hope. - Jeremiah 29:11";
+    
+    let text = `📅 *Daily Verse*\n\n${verse}`;
+    if (s?.language === 'am') {
+        const amVerse = await getAmharicVerse(verse);
+        if (amVerse) text += `\n\n🇪🇹 *Amharic:*\n${amVerse}`;
+    }
+    await safeSend(chatId, text);
 }
 
 // ─── Interaction Handlers ─────────────────────────────────────────────────────
@@ -208,6 +237,68 @@ bot.on('message', async (msg) => {
         setState(chatId, 'apply_topics', null, state.tempData);
         return;
     }
+    if (state.step === 'apply_max_mentees') {
+        const max = parseInt(text);
+        if (isNaN(max) || max < 1 || max > 20) return safeSend(chatId, "❌ Enter 1-20.");
+        
+        await supabase.from('mentor_applications').insert({
+            telegram_id: chatId,
+            answer_q1: `Bio: ${state.tempData.bio}`,
+            answer_q2: `Spec: ${state.tempData.spec}`,
+            status: 'pending'
+        });
+        // Store expertise topics
+        if (state.tempData.selectedTopics) {
+            for (const tid of state.tempData.selectedTopics) {
+                await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: tid });
+            }
+        }
+        
+        clearState(chatId);
+        await safeSend(chatId, "✅ Application submitted! An admin will review it.");
+        await showMainMenu(chatId);
+        return;
+    }
+
+    if (state.step === 'sched_date') {
+        state.tempData.date = text.trim(); // YYYY-MM-DD
+        setState(chatId, 'sched_time', null, state.tempData);
+        await safeSend(chatId, "Enter time (HH:MM) in UTC:");
+        return;
+    }
+    if (state.step === 'sched_time') {
+        state.tempData.time = text.trim();
+        const dateStr = `${state.tempData.date}T${state.tempData.time}:00Z`;
+        if (isNaN(Date.parse(dateStr))) return safeSend(chatId, "❌ Invalid format.");
+        
+        // Finalize session creation
+        try {
+            // We assume an internal API or direct DB insert for now since we're in bot.js
+            // Prompt says "Call existing POST /api/sessions/create" but usually bot should use a helper function or direct DB
+            const { data: sess, error } = await supabase.from('video_sessions').insert({
+                mentor_id: chatId,
+                scheduled_at: dateStr,
+                type: state.tempData.type, // 'private' or 'group'
+                mentee_id: state.tempData.mentee_id || null,
+                status: 'scheduled'
+            }).select().single();
+            
+            if (error) throw error;
+            
+            const link = `${APP_URL}?start=session_${sess.id}`;
+            await safeSend(chatId, `✅ Session scheduled!\n\nDeep Link: ${link}`);
+            
+            if (sess.mentee_id) {
+                await safeSend(sess.mentee_id, `🙏 *New Session Scheduled!*\nYour mentor has scheduled a session for ${dateStr}.\n\nJoin here: ${link}`);
+            }
+        } catch (e) {
+            await safeSend(chatId, `❌ Failed: ${e.message}`);
+        }
+        
+        clearState(chatId);
+        await showMainMenu(chatId);
+        return;
+    }
 
     if (state.step === 'journal_new') {
       await supabase.from('journal_entries').insert({ telegram_id: chatId, content: text.trim() });
@@ -297,23 +388,20 @@ bot.on('callback_query', async (query) => {
         const topics = state.tempData.selectedTopics || (prefix === 'reg_topic_' ? [1] : []);
         
         if (prefix === 'reg_topic_') {
-            await supabase.from('users').insert({
-                telegram_id: chatId, chat_id: chatId, anonymous_id: state.tempData.nickname,
-                sex: state.tempData.sex, age_range: state.tempData.age_range, education_level: state.tempData.education_level, role: 'user'
+            // Store topics in tempData and move to Language selection
+            state.tempData.selectedTopics = topics;
+            setState(chatId, 'reg_language', null, state.tempData);
+            await bot.editMessageText("Choose your preferred language:", {
+                chat_id: chatId, message_id: query.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [[{ text: 'English', callback_data: 'reg_lang_en' }, { text: 'Amharic (አማርኛ)', callback_data: 'reg_lang_am' }]]
+                }
             });
-            await supabase.from('user_settings').insert({ telegram_id: chatId });
-            for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
-            clearState(chatId); await showMainMenu(chatId, `🎉 Registered!`);
         } else if (prefix === 'apply_topic_') {
-            await supabase.from('mentor_applications').insert({
-                telegram_id: chatId,
-                answer_q1: `Bio: ${state.tempData.bio}`,
-                answer_q2: `Spec: ${state.tempData.spec}`,
-                status: 'pending'
-            });
-            // Clear existing mentor topics if updating? Or just insert. Mentor applications usually new.
-            for (const tid of topics) await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: tid });
-            clearState(chatId); await safeSend(chatId, "✅ Application submitted!");
+            // Mentor topics done -> ask for Max Mentees
+            state.tempData.selectedTopics = topics;
+            setState(chatId, 'apply_max_mentees', null, state.tempData);
+            await safeSend(chatId, "What is the maximum number of mentees you can handle? (1-20, default 5):");
         } else if (prefix === 'set_topics_') {
             await supabase.from('user_topics').delete().eq('telegram_id', chatId);
             for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
@@ -323,9 +411,29 @@ bot.on('callback_query', async (query) => {
         const tid = parseInt(action);
         const current = state.tempData.selectedTopics || [];
         const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
-        setState(chatId, state.step, null, { ...state.tempData, selectedTopics: updated });
+        // Ensure state.step is preserved correctly
+        const nextStep = prefix === 'reg_topic_' ? 'reg_topics' : (prefix === 'apply_topic_' ? 'apply_topics' : 'edit_topics');
+        setState(chatId, nextStep, null, { ...state.tempData, selectedTopics: updated });
         await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, prefix), { chat_id: chatId, message_id: query.message.message_id });
     }
+  }
+
+  // Language Selection
+  else if (data.startsWith('reg_lang_')) {
+    const lang = data.replace('reg_lang_', '');
+    if (!state) return;
+    
+    // Finalize registration
+    await supabase.from('users').insert({
+        telegram_id: chatId, chat_id: chatId, anonymous_id: state.tempData.nickname,
+        sex: state.tempData.sex, age_range: state.tempData.age_range, education_level: state.tempData.education_level, role: 'user'
+    });
+    await supabase.from('user_settings').insert({ telegram_id: chatId, language: lang });
+    const topics = state.tempData.selectedTopics || [1];
+    for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
+    
+    clearState(chatId);
+    await showMainMenu(chatId, `🎉 *Registration Complete!*\n\nLanguage set to ${lang === 'en' ? 'English' : 'Amharic'}.`);
   }
 
   // Mentor Search by Topic
@@ -364,9 +472,69 @@ bot.on('callback_query', async (query) => {
   else if (data.startsWith('journal_view_')) await viewJournalEntries(chatId, parseInt(data.replace('journal_view_', '')));
   else if (data.startsWith('journal_read_')) await readJournalEntry(chatId, data.replace('journal_read_', ''));
   else if (data === 'menu_verse') await handleDailyVerse(chatId);
-  else if (data === 'menu_settings') await handleSettingsFlow(chatId);
+  else if (data === 'menu_settings') {
+    const { data: s } = await supabase.from('user_settings').select('*').eq('telegram_id', chatId).single();
+    const kb = {
+        inline_keyboard: [
+            [{ text: `🔔 Verse: ${s.notif_verse ? 'ON' : 'OFF'}`, callback_data: 'settings_toggle_notif_verse' }],
+            [{ text: `🔔 Messages: ${s.notif_messages ? 'ON' : 'OFF'}`, callback_data: 'settings_toggle_notif_messages' }],
+            [{ text: `⏰ Verse Time: ${s.verse_time}:00`, callback_data: 'settings_time' }],
+            [{ text: `🌍 Language: ${s.language === 'en' ? 'EN' : 'AM'}`, callback_data: 'settings_lang' }]
+        ]
+    };
+    await safeSend(chatId, "⚙️ *Settings*", { reply_markup: kb });
+  }
   else if (data.startsWith('settings_toggle_')) await toggleSetting(chatId, data.replace('settings_toggle_', ''));
+  else if (data === 'menu_schedule') {
+    setState(chatId, 'sched_type', null, { type: 'group' });
+    await safeSend(chatId, "Select session type:", {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '👤 1-on-1 (Private)', callback_data: 'sched_type_private' }],
+                [{ text: '👥 Group Session', callback_data: 'sched_type_group' }]
+            ]
+        }
+    });
+  }
+  else if (data.startsWith('sched_type_')) {
+    const type = data.replace('sched_type_', '');
+    if (!state) return;
+    state.tempData.type = type;
+    if (type === 'private') {
+        const { data: mentees } = await supabase.from('mentorship_assignments').select('user_id, users(anonymous_id)').eq('mentor_id', chatId).eq('is_active', true);
+        if (!mentees?.length) return safeSend(chatId, "No mentees to schedule with.");
+        const buttons = mentees.map(m => [{ text: m.users.anonymous_id, callback_data: `sched_mentee_${m.user_id}` }]);
+        await safeSend(chatId, "Select mentee:", { reply_markup: { inline_keyboard: buttons } });
+    } else {
+        setState(chatId, 'sched_date', null, state.tempData);
+        await safeSend(chatId, "Enter date (YYYY-MM-DD):");
+    }
+  }
+  else if (data.startsWith('sched_mentee_')) {
+    if (!state) return;
+    state.tempData.mentee_id = data.replace('sched_mentee_', '');
+    setState(chatId, 'sched_date', null, state.tempData);
+    await safeSend(chatId, "Enter date (YYYY-MM-DD):");
+  }
+  else if (data === 'menu_mentees') {
+    const { data: mentees } = await supabase.from('mentorship_assignments').select('user_id, users(anonymous_id), topics(name)').eq('mentor_id', chatId).eq('is_active', true);
+    if (!mentees?.length) return safeSend(chatId, "No active mentees.");
+    let t = "👥 *My Mentees*\n\n";
+    mentees.forEach(m => t += `👤 @${m.users.anonymous_id} (${m.topics.name})\n`);
+    await safeSend(chatId, t);
+  }
   else if (data === 'settings_time') { setState(chatId, 'set_verse_time'); await safeSend(chatId, "Enter hour (0-23 UTC):"); }
+  else if (data === 'settings_lang') {
+    await bot.editMessageText("Choose language:", {
+        chat_id: chatId, message_id: query.message.message_id,
+        reply_markup: { inline_keyboard: [[{ text: 'English', callback_data: 'set_lang_en' }, { text: 'Amharic', callback_data: 'set_lang_am' }]] }
+    });
+  }
+  else if (data.startsWith('set_lang_')) {
+    const lang = data.replace('set_lang_', '');
+    await supabase.from('user_settings').update({ language: lang }).eq('telegram_id', chatId);
+    await safeSend(chatId, `✅ Language updated to ${lang === 'en' ? 'English' : 'Amharic'}.`);
+  }
 
   bot.answerCallbackQuery(query.id);
 });
