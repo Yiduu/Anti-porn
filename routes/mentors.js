@@ -1,18 +1,33 @@
 'use strict';
 
 const express = require('express');
-const { notifyMentorshipRequest, notifyMentorshipAccepted, notifyMentorshipRejected } = require('../bot');
 
 module.exports = function mentorRoutes(supabase, requireAuth) {
   const router = express.Router();
 
   // GET /api/mentors – list available mentors
   router.get('/', requireAuth, async (req, res) => {
-    const { data, error } = await supabase
+    const { topic_id } = req.query;
+    
+    let query = supabase
       .from('users')
       .select('telegram_id, anonymous_id, user_settings(bio, specialization, max_mentees, display_name)')
       .eq('role', 'mentor')
       .eq('is_banned', false);
+
+    if (topic_id) {
+      // Filter by topic_id in mentor_topics
+      const { data: mentorIds } = await supabase
+        .from('mentor_topics')
+        .select('telegram_id')
+        .eq('topic_id', topic_id);
+      
+      const ids = (mentorIds || []).map(m => m.telegram_id);
+      if (ids.length === 0) return res.json([]);
+      query = query.in('telegram_id', ids);
+    }
+
+    const { data, error } = await query;
 
     if (error) return res.status(500).json({ error: error.message });
 
@@ -45,6 +60,8 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
     // Notify mentor
     const { data: requester } = await supabase.from('users').select('anonymous_id, user_settings(display_name)').eq('telegram_id', user_id).single();
     const requesterName = requester?.user_settings?.display_name || requester?.anonymous_id || 'A user';
+    
+    const { notifyMentorshipRequest } = require('../bot');
     await notifyMentorshipRequest(mentor_id, requesterName);
 
     res.status(201).json(data);
@@ -88,6 +105,7 @@ module.exports = function mentorRoutes(supabase, requireAuth) {
     const { data: mentor } = await supabase.from('users').select('anonymous_id, user_settings(display_name)').eq('telegram_id', mentor_id).single();
     const mentorName = mentor?.user_settings?.display_name || mentor?.anonymous_id || 'Your mentor';
     
+    const { notifyMentorshipAccepted, notifyMentorshipRejected } = require('../bot');
     if (action === 'accepted') {
       await notifyMentorshipAccepted(reqData.user_id, mentorName);
     } else {
