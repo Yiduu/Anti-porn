@@ -266,11 +266,14 @@ bot.on('message', async (msg) => {
             await safeSend(chatId, "Thank you for applying. Your application has been submitted for admin review. You will be notified once a decision is made.");
             
             // Notify Admin
-            const adminId = process.env.ADMIN_CHAT_ID;
-            if (adminId) {
+            const adminIds = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_CHAT_ID;
+            if (adminIds) {
                 const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', chatId).single();
                 const adminMsg = `🆕 *New Mentor Application*\n\nUser: *${u?.anonymous_id || chatId}*\n\n*Q1 (Free since):* ${state.tempData.q1}\n*Q2 (Steps):* ${state.tempData.q2}\n*Q3 (Other):* ${q3 || '_None_'}`;
-                await safeSend(adminId, adminMsg);
+                
+                for (const id of adminIds.split(',')) {
+                    if (id.trim()) await safeSend(id.trim(), adminMsg);
+                }
             }
         }
         
