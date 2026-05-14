@@ -287,44 +287,44 @@ bot.on('callback_query', async (query) => {
   }
 
   // Topic Selection (Multi-select)
-  else if (data.startsWith('reg_topic_')) {
-    const topicId = data.replace('reg_topic_', '');
-    if (topicId === 'done') {
-        const topics = state.tempData.selectedTopics || [1]; // Default to Porn Addiction
-        await supabase.from('users').insert({
-            telegram_id: chatId, chat_id: chatId, anonymous_id: state.tempData.nickname,
-            sex: state.tempData.sex, age_range: state.tempData.age_range, education_level: state.tempData.education_level, role: 'user'
-        });
-        await supabase.from('user_settings').insert({ telegram_id: chatId });
-        for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
-        clearState(chatId); await showMainMenu(chatId, `🎉 Registered!`);
-    } else {
-        const tid = parseInt(topicId);
-        const current = state.tempData.selectedTopics || [];
-        const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
-        setState(chatId, 'reg_topics', null, { ...state.tempData, selectedTopics: updated });
-        await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, 'reg_topic_'), { chat_id: chatId, message_id: query.message.message_id });
-    }
-  }
+  else if (data.startsWith('reg_topic_') || data.startsWith('apply_topic_') || data.startsWith('set_topics_')) {
+    const prefix = data.startsWith('reg_topic_') ? 'reg_topic_' : (data.startsWith('apply_topic_') ? 'apply_topic_' : 'set_topics_');
+    const action = data.replace(prefix, '');
+    
+    if (!state) return safeSend(chatId, "Session expired. Please start again.");
 
-  else if (data.startsWith('apply_topic_')) {
-    const topicId = data.replace('apply_topic_', '');
-    if (topicId === 'done') {
-        const topics = state.tempData.selectedTopics || [];
-        await supabase.from('mentor_applications').insert({
-            telegram_id: chatId,
-            answer_q1: `Bio: ${state.tempData.bio}`,
-            answer_q2: `Spec: ${state.tempData.spec}`,
-            status: 'pending'
-        });
-        for (const tid of topics) await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: tid });
-        clearState(chatId); await safeSend(chatId, "✅ Application submitted! An admin will review it.");
+    if (action === 'done') {
+        const topics = state.tempData.selectedTopics || (prefix === 'reg_topic_' ? [1] : []);
+        
+        if (prefix === 'reg_topic_') {
+            await supabase.from('users').insert({
+                telegram_id: chatId, chat_id: chatId, anonymous_id: state.tempData.nickname,
+                sex: state.tempData.sex, age_range: state.tempData.age_range, education_level: state.tempData.education_level, role: 'user'
+            });
+            await supabase.from('user_settings').insert({ telegram_id: chatId });
+            for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
+            clearState(chatId); await showMainMenu(chatId, `🎉 Registered!`);
+        } else if (prefix === 'apply_topic_') {
+            await supabase.from('mentor_applications').insert({
+                telegram_id: chatId,
+                answer_q1: `Bio: ${state.tempData.bio}`,
+                answer_q2: `Spec: ${state.tempData.spec}`,
+                status: 'pending'
+            });
+            // Clear existing mentor topics if updating? Or just insert. Mentor applications usually new.
+            for (const tid of topics) await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: tid });
+            clearState(chatId); await safeSend(chatId, "✅ Application submitted!");
+        } else if (prefix === 'set_topics_') {
+            await supabase.from('user_topics').delete().eq('telegram_id', chatId);
+            for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
+            clearState(chatId); await safeSend(chatId, "✅ Topics updated!"); await showMainMenu(chatId);
+        }
     } else {
-        const tid = parseInt(topicId);
+        const tid = parseInt(action);
         const current = state.tempData.selectedTopics || [];
         const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
-        setState(chatId, 'apply_topics', null, { ...state.tempData, selectedTopics: updated });
-        await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, 'apply_topic_'), { chat_id: chatId, message_id: query.message.message_id });
+        setState(chatId, state.step, null, { ...state.tempData, selectedTopics: updated });
+        await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, prefix), { chat_id: chatId, message_id: query.message.message_id });
     }
   }
 
@@ -332,22 +332,25 @@ bot.on('callback_query', async (query) => {
   else if (data === 'menu_mentors') {
     const { data: ut } = await supabase.from('user_topics').select('topic_id, topics(name)').eq('telegram_id', chatId);
     if (!ut?.length) {
-        await safeSend(chatId, "Please select topics you're struggling with first using /settopics.");
+        await safeSend(chatId, "Please select topics first using /settopics.");
         return;
     }
     const buttons = ut.map(t => [{ text: t.topics.name, callback_data: `search_topic_${t.topic_id}` }]);
     await safeSend(chatId, "Select a topic to find mentors:", { reply_markup: { inline_keyboard: buttons } });
   } else if (data.startsWith('search_topic_')) {
     await listMentors(chatId, 0, data.replace('search_topic_', ''));
+  } else if (data.startsWith('mentors_page_')) {
+    const parts = data.split('_'); // mentors_page_page_topicId
+    await listMentors(chatId, parseInt(parts[2]), parts[3]);
   }
 
   else if (data.startsWith('mentor_req_')) {
-    const [_, __, mid, tid] = data.split('_');
-    setState(chatId, 'mentor_req_msg', null, { mentorId: mid, topicId: tid });
+    const parts = data.split('_'); // mentor_req_id_topicId
+    setState(chatId, 'mentor_req_msg', null, { mentorId: parts[2], topicId: parts[3] });
     await safeSend(chatId, "Short message to mentor (optional), or /skip:");
   } else if (data.startsWith('mentor_accept_')) {
-    const [_, __, uid, tid] = data.split('_');
-    await acceptMentorship(chatId, uid, tid);
+    const parts = data.split('_'); // mentor_accept_uid_tid
+    await acceptMentorship(chatId, parts[2], parts[3]);
   } else if (data.startsWith('mentor_reject_')) {
     await rejectMentorship(chatId, data.split('_')[2]);
   }
