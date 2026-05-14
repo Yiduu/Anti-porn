@@ -85,6 +85,28 @@ async function getTopicPickerKeyboard(selectedIds = [], actionPrefix = 'reg_topi
   return { inline_keyboard: buttons };
 }
 
+async function getMentorTopicKeyboard(chatId) {
+  const { data: topics } = await supabase.from('topics').select('id, name').eq('is_active', true).order('name');
+  const { data: mentorTopics } = await supabase.from('mentor_topics').select('topic_id').eq('telegram_id', chatId);
+  const selectedIds = (mentorTopics || []).map(mt => mt.topic_id);
+  
+  if (!topics) return { inline_keyboard: [] };
+
+  const buttons = topics.map(t => {
+    const isSelected = selectedIds.includes(t.id);
+    return [{
+      text: `${isSelected ? '✅' : '⬜'} ${t.name}`,
+      callback_data: `toggle_topic_${t.id}`
+    }];
+  });
+
+  buttons.push([
+    { text: '✅ Done', callback_data: 'topic_done' },
+    { text: '❌ Cancel', callback_data: 'topic_cancel' }
+  ]);
+  return { inline_keyboard: buttons };
+}
+
 // ─── Registration Wizard ──────────────────────────────────────────────────────
 async function startRegistration(chatId) {
   setState(chatId, 'reg_sex');
@@ -505,7 +527,9 @@ bot.on('callback_query', async (query) => {
   else if (data.startsWith('journal_read_')) await readJournalEntry(chatId, data.replace('journal_read_', ''));
   else if (data === 'menu_verse') await handleDailyVerse(chatId);
   else if (data === 'menu_settings') {
+    const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
     const { data: s } = await supabase.from('user_settings').select('*').eq('telegram_id', chatId).single();
+    
     const kb = {
         inline_keyboard: [
             [{ text: `🔔 Verse: ${s.notif_verse ? 'ON' : 'OFF'}`, callback_data: 'settings_toggle_notif_verse' }],
@@ -514,7 +538,43 @@ bot.on('callback_query', async (query) => {
             [{ text: `🌍 Language: ${s.language === 'en' ? 'EN' : 'AM'}`, callback_data: 'settings_lang' }]
         ]
     };
+
+    // Only show Expertise Topics to mentors or admins
+    if (user?.role === 'mentor' || user?.role === 'admin') {
+        kb.inline_keyboard.push([{ text: '📚 My Expertise Topics', callback_data: 'menu_mentor_topics' }]);
+    }
+    
     await safeSend(chatId, "⚙️ *Settings*", { reply_markup: kb });
+  }
+  else if (data === 'menu_mentor_topics') {
+    const kb = await getMentorTopicKeyboard(chatId);
+    await safeSend(chatId, "Select the topics you are qualified to counsel. Mentees will find you based on these selections:", { reply_markup: kb });
+  }
+  else if (data.startsWith('toggle_topic_')) {
+    const topicId = parseInt(data.replace('toggle_topic_', ''));
+    const { data: existing } = await supabase.from('mentor_topics').select('*').eq('telegram_id', chatId).eq('topic_id', topicId).single();
+    
+    if (existing) {
+        await supabase.from('mentor_topics').delete().eq('telegram_id', chatId).eq('topic_id', topicId);
+    } else {
+        await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: topicId });
+    }
+    
+    const kb = await getMentorTopicKeyboard(chatId);
+    await bot.editMessageReplyMarkup(kb, { chat_id: chatId, message_id: query.message.message_id });
+    await bot.answerCallbackQuery(query.id);
+    return; // Prevent fall-through
+  }
+  else if (data === 'topic_done') {
+    await safeSend(chatId, "✅ Your expertise topics have been updated.");
+    await showMainMenu(chatId);
+    await bot.answerCallbackQuery(query.id);
+    return;
+  }
+  else if (data === 'topic_cancel') {
+    await showMainMenu(chatId);
+    await bot.answerCallbackQuery(query.id);
+    return;
   }
   else if (data.startsWith('settings_toggle_')) await toggleSetting(chatId, data.replace('settings_toggle_', ''));
   else if (data === 'menu_schedule') {
@@ -666,7 +726,15 @@ async function toggleSetting(chatId, f) {
 
 async function notifyMentorApproved(chatId) {
     await safeSend(chatId, "🎉 *Congratulations!*\n\nYour application to become a mentor has been approved. You now have access to mentor features in the menu.");
-    await showMainMenu(chatId);
+    
+    // Auto-prompt to set topics if none exist
+    const { data: mt } = await supabase.from('mentor_topics').select('topic_id').eq('telegram_id', chatId);
+    if (!mt?.length) {
+        const kb = await getMentorTopicKeyboard(chatId);
+        await safeSend(chatId, "Please set your expertise topics to start receiving mentee requests. You can also do this later in Settings.", { reply_markup: kb });
+    } else {
+        await showMainMenu(chatId);
+    }
 }
 
 async function notifyMentorRejected(chatId) {
