@@ -594,6 +594,12 @@
                     Support Tickets
                     <span id="openTicketsBadge" class="chip chip-red" style="margin-left:auto;display:none">0</span>
                 </div>
+                <div class="sidebar-item" onclick="showTab('topics')" id="tab-topics">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                    </svg>
+                    Topics
+                </div>
                 <div class="sidebar-item" onclick="showTab('broadcast')" id="tab-broadcast">
                     <svg viewBox="0 0 24 24">
                         <path d="M22 2L11 13" />
@@ -775,6 +781,59 @@
                     </div>
                 </div>
 
+                <!-- ── Topics Tab ───────────────────────────────────────── -->
+                <div class="tab-pane" id="pane-topics">
+                    <div class="section-header">
+                        <div class="section-title">Manage Counseling Topics</div>
+                        <button class="btn btn-primary btn-sm" onclick="openTopicModal()">+ Add Topic</button>
+                    </div>
+                    <div class="admin-table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Slug</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topicsTableBody">
+                                <tr>
+                                    <td colspan="5" class="table-loading">Loading…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="topicModal" class="modal-overlay">
+                        <div class="modal-sheet" style="max-width:450px;margin:auto;margin-top:100px;border-radius:14px">
+                            <div class="modal-title" id="topicModalTitle">Add Topic</div>
+                            <input type="hidden" id="topicId">
+                            <div class="form-group">
+                                <label class="form-label">Name</label>
+                                <input type="text" id="topicName" class="form-control" placeholder="e.g. Pornography Addiction">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Slug</label>
+                                <input type="text" id="topicSlug" class="form-control" placeholder="e.g. porn_addiction">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Description</label>
+                                <textarea id="topicDesc" class="form-control" rows="3"></textarea>
+                            </div>
+                            <div class="toggle-wrap">
+                                <span>Active</span>
+                                <div id="topicActive" class="toggle on" onclick="this.classList.toggle('on')"></div>
+                            </div>
+                            <div style="display:flex;gap:10px;margin-top:20px">
+                                <button class="btn btn-primary btn-full" onclick="saveTopic()">Save</button>
+                                <button class="btn btn-ghost btn-full" onclick="closeTopicModal()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ── Broadcast Tab ────────────────────────────────────── -->
                 <div class="tab-pane" id="pane-broadcast">
                     <div class="broadcast-box">
@@ -894,7 +953,7 @@
         }
 
         /* ─── Tab Navigation ──────────────────────────────────────────── */
-        const tabTitles = { overview: 'Overview', users: 'Users', applications: 'Mentor Applications', messages: 'Messages', tickets: 'Support Tickets', broadcast: 'Broadcast', audit: 'Audit Log' };
+        const tabTitles = { overview: 'Overview', users: 'Users', applications: 'Mentor Applications', messages: 'Messages', tickets: 'Support Tickets', topics: 'Counseling Topics', broadcast: 'Broadcast', audit: 'Audit Log' };
 
         function showTab(tab) {
             document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -911,6 +970,7 @@
                 case 'applications': loadApplications(1); break;
                 case 'messages': loadMessages(1); break;
                 case 'tickets': loadTickets(); break;
+                case 'topics': loadTopics(); break;
                 case 'audit': loadAudit(1); break;
             }
         }
@@ -1190,6 +1250,64 @@
                 showToast('Ticket updated', 'success');
                 loadTickets();
                 loadStats();
+            } catch (e) { showToast(e.message, 'error'); }
+        }
+
+        /* ─── Topics ──────────────────────────────────────────────────── */
+        async function loadTopics() {
+            const body = document.getElementById('topicsTableBody');
+            body.innerHTML = '<tr><td colspan="5" class="table-loading">Loading…</td></tr>';
+            try {
+                const topics = await apiFetch('/api/topics/admin');
+                body.innerHTML = topics.map(t => `<tr>
+                    <td><strong>${escHtml(t.name)}</strong></td>
+                    <td><code style="font-size:.7rem">${escHtml(t.slug)}</code></td>
+                    <td style="font-size:.75rem">${escHtml(t.description)}</td>
+                    <td><span class="${t.is_active ? 'status-active' : 'status-rejected'}">${t.is_active ? 'Active' : 'Disabled'}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost" onclick="editTopic(${JSON.stringify(t).replace(/"/g, '&quot;')})">Edit</button>
+                    </td>
+                </tr>`).join('');
+            } catch (e) { body.innerHTML = `<tr><td colspan="5" class="table-loading">${e.message}</td></tr>`; }
+        }
+
+        function openTopicModal() {
+            document.getElementById('topicModalTitle').textContent = 'Add Topic';
+            document.getElementById('topicId').value = '';
+            document.getElementById('topicName').value = '';
+            document.getElementById('topicSlug').value = '';
+            document.getElementById('topicDesc').value = '';
+            document.getElementById('topicActive').classList.add('on');
+            document.getElementById('topicModal').classList.add('open');
+        }
+
+        function closeTopicModal() { document.getElementById('topicModal').classList.remove('open'); }
+
+        function editTopic(t) {
+            document.getElementById('topicModalTitle').textContent = 'Edit Topic';
+            document.getElementById('topicId').value = t.id;
+            document.getElementById('topicName').value = t.name;
+            document.getElementById('topicSlug').value = t.slug;
+            document.getElementById('topicDesc').value = t.description;
+            if (t.is_active) document.getElementById('topicActive').classList.add('on');
+            else document.getElementById('topicActive').classList.remove('on');
+            document.getElementById('topicModal').classList.add('open');
+        }
+
+        async function saveTopic() {
+            const id = document.getElementById('topicId').value;
+            const body = {
+                name: document.getElementById('topicName').value,
+                slug: document.getElementById('topicSlug').value,
+                description: document.getElementById('topicDesc').value,
+                is_active: document.getElementById('topicActive').classList.contains('on')
+            };
+            try {
+                const url = id ? `/api/topics/${id}` : '/api/topics';
+                await apiFetch(url, { method: id ? 'PUT' : 'POST', body });
+                showToast('Topic saved', 'success');
+                closeTopicModal();
+                loadTopics();
             } catch (e) { showToast(e.message, 'error'); }
         }
 
