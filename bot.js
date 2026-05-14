@@ -3,6 +3,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
 const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -11,7 +12,7 @@ const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 const APP_URL = process.env.MINI_APP_URL || 'https://your-app.com';
 
 // ─── State Management ─────────────────────────────────────────────────────────
-const userStates = new Map(); // telegram_id -> { step: string, targetId: bigint, expires: number, tempData: object }
+const userStates = new Map(); // telegram_id -> { step, targetId, expires, tempData: { selectedTopics: [] } }
 
 function setState(chatId, step, targetId = null, tempData = {}) {
   userStates.set(chatId, { step, targetId, expires: Date.now() + 3600000, tempData });
@@ -58,6 +59,23 @@ async function showMainMenu(chatId, text = null) {
   await safeSend(chatId, menuText, { reply_markup: keyboard });
 }
 
+// ─── Topic Picker Logic ───────────────────────────────────────────────────────
+async function getTopicPickerKeyboard(selectedIds = [], actionPrefix = 'reg_topic_') {
+  const { data: topics } = await supabase.from('topics').select('id, name').eq('is_active', true).order('name');
+  if (!topics) return { inline_keyboard: [] };
+
+  const buttons = topics.map(t => {
+    const isSelected = selectedIds.includes(t.id);
+    return [{
+      text: `${isSelected ? '✅' : '⬜'} ${t.name}`,
+      callback_data: `${actionPrefix}${t.id}`
+    }];
+  });
+
+  buttons.push([{ text: '➡️ Done', callback_data: `${actionPrefix}done` }]);
+  return { inline_keyboard: buttons };
+}
+
 // ─── Registration Wizard ──────────────────────────────────────────────────────
 async function startRegistration(chatId) {
   setState(chatId, 'reg_sex');
@@ -72,7 +90,6 @@ async function startRegistration(chatId) {
 }
 
 // ─── Chat Logic (Pure Telegram Style) ─────────────────────────────────────────
-
 async function getActiveChatPartners(chatId) {
     const { data: mentorAss } = await supabase.from('mentorship_assignments').select('mentor_id').eq('user_id', chatId).eq('is_active', true);
     if (mentorAss?.length > 0) return { role: 'mentee', partners: mentorAss.map(a => a.mentor_id) };
@@ -89,19 +106,9 @@ async function forwardMessage(fromId, toId, text) {
   const { data: recipient } = await supabase.from('users').select('chat_id').eq('telegram_id', toId).single();
   if (recipient?.chat_id) {
     const roleLabel = sender?.role === 'mentor' ? 'mentor' : 'mentee';
-    // PURE TEXT: No buttons.
     await safeSend(recipient.chat_id, `💬 *Message from your ${roleLabel} [${sender?.anonymous_id}]:*\n\n${text}`);
-    // Update context for recipient so they can reply back naturally
-    setState(toId, 'chat_active', fromId);
+    setState(toId, 'chat_active', fromId); // Persist context for recipient
   }
-}
-
-// ─── Translation Helper ───────────────────────────────────────────────────────
-async function translateToAmharic(text) {
-  try {
-    const res = await axios.get(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|am`);
-    return res.data.responseData.translatedText || text;
-  } catch (err) { return text; }
 }
 
 // ─── Interaction Handlers ─────────────────────────────────────────────────────
@@ -113,7 +120,6 @@ bot.on('message', async (msg) => {
 
   if (!text) return;
 
-  // Handle Commands
   if (text.startsWith('/')) {
     const command = text.split(' ')[0].toLowerCase();
     
@@ -126,15 +132,26 @@ bot.on('message', async (msg) => {
 
     if (command === '/menu') { await showMainMenu(chatId); return; }
 
+    if (command === '/apply') {
+        const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
+        if (user?.role === 'mentor') return safeSend(chatId, "You are already a mentor.");
+        setState(chatId, 'apply_bio');
+        await safeSend(chatId, "Great! Tell us about yourself (Bio):");
+        return;
+    }
+
+    if (command === '/settopics') {
+        const keyboard = await getTopicPickerKeyboard([], 'set_topics_');
+        await safeSend(chatId, "Select the areas you are struggling with:", { reply_markup: keyboard });
+        setState(chatId, 'edit_topics', null, { selectedTopics: [] });
+        return;
+    }
+
     if (command === '/reply') {
         const args = text.split(' ');
-        if (args.length < 2) {
-            await safeSend(chatId, "Usage: `/reply @nickname message` or `/reply 1 message` (if using numbers from list).");
-            return;
-        }
-        
+        if (args.length < 2) return safeSend(chatId, "Usage: `/reply @nickname message` or `/reply number message`.");
         const partnersInfo = await getActiveChatPartners(chatId);
-        if (!partnersInfo) { await safeSend(chatId, "No active partners."); return; }
+        if (!partnersInfo) return safeSend(chatId, "No active partners.");
 
         let targetId = null;
         const input = args[1];
@@ -149,12 +166,11 @@ bot.on('message', async (msg) => {
             if (!isNaN(idx) && partnersInfo.partners[idx]) targetId = partnersInfo.partners[idx];
         }
 
-        if (!targetId) { await safeSend(chatId, "Partner not found or not active."); return; }
+        if (!targetId) return safeSend(chatId, "Partner not found or not active.");
         if (!content) { 
             setState(chatId, 'chat_active', targetId);
             const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', targetId).single();
-            await safeSend(chatId, `Context set to *${u.anonymous_id}*. Your next message will go to them.`);
-            return;
+            return safeSend(chatId, `Focus set to *${u.anonymous_id}*. Your next message will go to them.`);
         }
 
         await forwardMessage(chatId, targetId, content);
@@ -164,24 +180,33 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  // Handle Wizard Steps
-  if (state && ['reg_sex', 'reg_age', 'reg_edu', 'reg_nickname', 'journal_new', 'mentor_req_msg', 'set_verse_time'].includes(state.step)) {
+  // Handle Flow Steps
+  if (state) {
     if (state.step === 'reg_nickname') {
-      const nickname = text.trim();
-      if (nickname.length < 3 || nickname.length > 20 || !/^[a-zA-Z0-9_]+$/.test(nickname)) {
-        await safeSend(chatId, "❌ Invalid nickname. 3-20 letters/numbers/underscores.");
-        return;
-      }
-      const { data: existing } = await supabase.from('users').select('telegram_id').eq('anonymous_id', nickname).single();
-      if (existing) { await safeSend(chatId, "❌ Nickname taken."); return; }
-      await supabase.from('users').insert({
-        telegram_id: chatId, chat_id: chatId, anonymous_id: nickname,
-        sex: state.tempData.sex, age_range: state.tempData.age_range, education_level: state.tempData.education_level, role: 'user'
-      });
-      await supabase.from('user_settings').insert({ telegram_id: chatId });
-      clearState(chatId);
-      await showMainMenu(chatId, `🎉 Welcome, *${nickname}*.`);
+      const nick = text.trim();
+      if (nick.length < 3 || nick.length > 20 || !/^[a-zA-Z0-9_]+$/.test(nick)) return safeSend(chatId, "❌ Invalid nickname.");
+      const { data: ex } = await supabase.from('users').select('telegram_id').eq('anonymous_id', nick).single();
+      if (ex) return safeSend(chatId, "❌ Taken.");
+      
+      state.tempData.nickname = nick;
+      const keyboard = await getTopicPickerKeyboard([], 'reg_topic_');
+      await safeSend(chatId, `Almost there, *${nick}*. Select the areas you are struggling with:`, { reply_markup: keyboard });
+      setState(chatId, 'reg_topics', null, state.tempData);
       return;
+    }
+
+    if (state.step === 'apply_bio') {
+        state.tempData.bio = text.trim();
+        setState(chatId, 'apply_spec', null, state.tempData);
+        await safeSend(chatId, "What is your specialization?");
+        return;
+    }
+    if (state.step === 'apply_spec') {
+        state.tempData.spec = text.trim();
+        const keyboard = await getTopicPickerKeyboard([], 'apply_topic_');
+        await safeSend(chatId, "Select your areas of expertise:", { reply_markup: keyboard });
+        setState(chatId, 'apply_topics', null, state.tempData);
+        return;
     }
 
     if (state.step === 'journal_new') {
@@ -192,13 +217,15 @@ bot.on('message', async (msg) => {
 
     if (state.step === 'mentor_req_msg') {
       const mid = state.tempData.mentorId;
+      const tid = state.tempData.topicId;
       const msgStr = text === '/skip' ? '' : text.trim();
       const { error } = await supabase.from('mentorship_requests').insert({ user_id: chatId, mentor_id: mid, message: msgStr });
       if (error) await safeSend(chatId, "❌ Request failed.");
       else {
         const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', chatId).single();
-        await safeSend(mid, `🙏 *New Mentorship Request!*\nFrom: *${u.anonymous_id}*\nMessage: ${msgStr || '_None_'}\n\nDo you accept?`, {
-          reply_markup: { inline_keyboard: [[{ text: '✅ Accept', callback_data: `mentor_accept_${chatId}` }, { text: '❌ Reject', callback_data: `mentor_reject_${chatId}` }]] }
+        const { data: t } = await supabase.from('topics').select('name').eq('id', tid).single();
+        await safeSend(mid, `🙏 *New Mentorship Request!*\nFrom: *${u.anonymous_id}*\nTopic: *${t.name}*\nMessage: ${msgStr || '_None_'}\n\nDo you accept?`, {
+          reply_markup: { inline_keyboard: [[{ text: '✅ Accept', callback_data: `mentor_accept_${chatId}_${tid}` }, { text: '❌ Reject', callback_data: `mentor_reject_${chatId}` }]] }
         });
         await safeSend(chatId, "✅ Sent!");
       }
@@ -208,7 +235,7 @@ bot.on('message', async (msg) => {
 
     if (state.step === 'set_verse_time') {
       const h = parseInt(text);
-      if (isNaN(h) || h < 0 || h > 23) { await safeSend(chatId, "❌ Enter 0-23."); return; }
+      if (isNaN(h) || h < 0 || h > 23) return safeSend(chatId, "❌ Enter 0-23.");
       await supabase.from('user_settings').update({ verse_time: h }).eq('telegram_id', chatId);
       await safeSend(chatId, `✅ Verse time: ${h}:00 UTC.`); clearState(chatId); await showMainMenu(chatId);
       return;
@@ -217,32 +244,23 @@ bot.on('message', async (msg) => {
 
   // Pure Chat Forwarding
   const partnersInfo = await getActiveChatPartners(chatId);
-  if (!partnersInfo) {
-    await safeSend(chatId, "No active partner. Use /menu to find one.");
-    return;
-  }
+  if (!partnersInfo) return safeSend(chatId, "No active partner. Use /menu to find one.");
 
   let targetId = null;
   if (partnersInfo.partners.length === 1) {
     targetId = partnersInfo.partners[0];
   } else {
-    // Mentor with multiple partners
-    if (state && state.step === 'chat_active' && state.targetId) {
-        targetId = state.targetId;
-    } else {
+    if (state && state.step === 'chat_active' && state.targetId) targetId = state.targetId;
+    else {
         const { data: mentees } = await supabase.from('users').select('telegram_id, anonymous_id').in('telegram_id', partnersInfo.partners);
-        let listStr = "You have multiple mentees. Specify who to message:\n\n";
+        let listStr = "Multiple mentees. Specify target:\n\n";
         mentees.forEach((m, i) => listStr += `${i+1}. @${m.anonymous_id}\n`);
-        listStr += "\nUse `/reply @nickname message` or `/reply number message`.";
-        await safeSend(chatId, listStr);
-        return;
+        listStr += "\nUse `/reply @nickname` or `/reply number`.";
+        return safeSend(chatId, listStr);
     }
   }
 
-  if (targetId) {
-    await forwardMessage(chatId, targetId, text.trim());
-    // Context is updated inside forwardMessage via state.
-  }
+  if (targetId) await forwardMessage(chatId, targetId, text.trim());
 });
 
 // ─── Callback Handler ─────────────────────────────────────────────────────────
@@ -250,27 +268,92 @@ bot.on('message', async (msg) => {
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
+  const state = getState(chatId);
 
+  // Registration Toggles
   if (data.startsWith('reg_sex_')) {
     setState(chatId, 'reg_age', null, { sex: data.replace('reg_sex_', '') });
     await bot.editMessageText("Age range?", { chat_id: chatId, message_id: query.message.message_id,
       reply_markup: { inline_keyboard: [[{ text: '13-17', callback_data: 'reg_age_13-17' }, { text: '18-24', callback_data: 'reg_age_18-24' }], [{ text: '25-34', callback_data: 'reg_age_25-34' }, { text: '35-44', callback_data: 'reg_age_35-44' }], [{ text: '45-54', callback_data: 'reg_age_45-54' }, { text: '55+', callback_data: 'reg_age_55+' }]] }
     });
   } else if (data.startsWith('reg_age_')) {
-    setState(chatId, 'reg_edu', null, { ...getState(chatId).tempData, age_range: data.replace('reg_age_', '') });
+    setState(chatId, 'reg_edu', null, { ...state.tempData, age_range: data.replace('reg_age_', '') });
     await bot.editMessageText("Education?", { chat_id: chatId, message_id: query.message.message_id,
       reply_markup: { inline_keyboard: [[{ text: 'Primary', callback_data: 'reg_edu_primary' }, { text: 'Secondary', callback_data: 'reg_edu_secondary' }], [{ text: 'Undergraduate', callback_data: 'reg_edu_undergraduate' }, { text: 'Graduate', callback_data: 'reg_edu_graduate' }], [{ text: 'Postgraduate', callback_data: 'reg_edu_postgraduate' }, { text: 'None', callback_data: 'reg_edu_none' }]] }
     });
   } else if (data.startsWith('reg_edu_')) {
-    setState(chatId, 'reg_nickname', null, { ...getState(chatId).tempData, education_level: data.replace('reg_edu_', '') });
+    setState(chatId, 'reg_nickname', null, { ...state.tempData, education_level: data.replace('reg_edu_', '') });
     await bot.editMessageText("Choose a unique **nickname**:", { chat_id: chatId, message_id: query.message.message_id });
   }
-  else if (data === 'menu_mentors') await listMentors(chatId);
-  else if (data.startsWith('mentors_page_')) await listMentors(chatId, parseInt(data.replace('mentors_page_', '')));
-  else if (data.startsWith('mentor_req_')) { setState(chatId, 'mentor_req_msg', null, { mentorId: data.replace('mentor_req_', '') }); await safeSend(chatId, "Short message to mentor (optional), or /skip:"); }
-  else if (data.startsWith('mentor_accept_')) await acceptMentorship(chatId, data.replace('mentor_accept_', ''));
-  else if (data.startsWith('mentor_reject_')) await rejectMentorship(chatId, data.replace('mentor_reject_', ''));
-  else if (data === 'menu_chat') await safeSend(chatId, "Just type in this chat to message your partner. If you have multiple mentees, use `/reply @nickname`.");
+
+  // Topic Selection (Multi-select)
+  else if (data.startsWith('reg_topic_')) {
+    const topicId = data.replace('reg_topic_', '');
+    if (topicId === 'done') {
+        const topics = state.tempData.selectedTopics || [1]; // Default to Porn Addiction
+        await supabase.from('users').insert({
+            telegram_id: chatId, chat_id: chatId, anonymous_id: state.tempData.nickname,
+            sex: state.tempData.sex, age_range: state.tempData.age_range, education_level: state.tempData.education_level, role: 'user'
+        });
+        await supabase.from('user_settings').insert({ telegram_id: chatId });
+        for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
+        clearState(chatId); await showMainMenu(chatId, `🎉 Registered!`);
+    } else {
+        const tid = parseInt(topicId);
+        const current = state.tempData.selectedTopics || [];
+        const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
+        setState(chatId, 'reg_topics', null, { ...state.tempData, selectedTopics: updated });
+        await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, 'reg_topic_'), { chat_id: chatId, message_id: query.message.message_id });
+    }
+  }
+
+  else if (data.startsWith('apply_topic_')) {
+    const topicId = data.replace('apply_topic_', '');
+    if (topicId === 'done') {
+        const topics = state.tempData.selectedTopics || [];
+        await supabase.from('mentor_applications').insert({
+            telegram_id: chatId,
+            answer_q1: `Bio: ${state.tempData.bio}`,
+            answer_q2: `Spec: ${state.tempData.spec}`,
+            status: 'pending'
+        });
+        for (const tid of topics) await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: tid });
+        clearState(chatId); await safeSend(chatId, "✅ Application submitted! An admin will review it.");
+    } else {
+        const tid = parseInt(topicId);
+        const current = state.tempData.selectedTopics || [];
+        const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
+        setState(chatId, 'apply_topics', null, { ...state.tempData, selectedTopics: updated });
+        await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, 'apply_topic_'), { chat_id: chatId, message_id: query.message.message_id });
+    }
+  }
+
+  // Mentor Search by Topic
+  else if (data === 'menu_mentors') {
+    const { data: ut } = await supabase.from('user_topics').select('topic_id, topics(name)').eq('telegram_id', chatId);
+    if (!ut?.length) {
+        await safeSend(chatId, "Please select topics you're struggling with first using /settopics.");
+        return;
+    }
+    const buttons = ut.map(t => [{ text: t.topics.name, callback_data: `search_topic_${t.topic_id}` }]);
+    await safeSend(chatId, "Select a topic to find mentors:", { reply_markup: { inline_keyboard: buttons } });
+  } else if (data.startsWith('search_topic_')) {
+    await listMentors(chatId, 0, data.replace('search_topic_', ''));
+  }
+
+  else if (data.startsWith('mentor_req_')) {
+    const [_, __, mid, tid] = data.split('_');
+    setState(chatId, 'mentor_req_msg', null, { mentorId: mid, topicId: tid });
+    await safeSend(chatId, "Short message to mentor (optional), or /skip:");
+  } else if (data.startsWith('mentor_accept_')) {
+    const [_, __, uid, tid] = data.split('_');
+    await acceptMentorship(chatId, uid, tid);
+  } else if (data.startsWith('mentor_reject_')) {
+    await rejectMentorship(chatId, data.split('_')[2]);
+  }
+
+  // Navigation
+  else if (data === 'menu_chat') await safeSend(chatId, "Just type to chat. Use `/reply @nickname` if mentor with multiple mentees.");
   else if (data === 'menu_streak') await handleStreakFlow(chatId);
   else if (data === 'streak_mark') await markStreakAsRead(chatId);
   else if (data === 'menu_journal') await safeSend(chatId, "✏️ *Journal*", { reply_markup: { inline_keyboard: [[{ text: '✍️ New', callback_data: 'journal_new' }], [{ text: '📜 View', callback_data: 'journal_view_0' }]] } });
@@ -281,30 +364,35 @@ bot.on('callback_query', async (query) => {
   else if (data === 'menu_settings') await handleSettingsFlow(chatId);
   else if (data.startsWith('settings_toggle_')) await toggleSetting(chatId, data.replace('settings_toggle_', ''));
   else if (data === 'settings_time') { setState(chatId, 'set_verse_time'); await safeSend(chatId, "Enter hour (0-23 UTC):"); }
-  else if (data === 'menu_help') await safeSend(chatId, "🙏 Just type to chat. Use /menu for tools.");
 
   bot.answerCallbackQuery(query.id);
 });
 
-// ─── Implementation Functions ───────────────────────────────────────────────
+// ─── Implementation ──────────────────────────────────────────────────────────
 
-async function listMentors(chatId, page = 0) {
+async function listMentors(chatId, page = 0, topicId) {
   const limit = 5;
-  const { data: ms } = await supabase.from('users').select('telegram_id, anonymous_id, user_settings(display_name, bio)').eq('role', 'mentor').eq('is_banned', false).range(page*limit, (page+1)*limit-1);
+  const { data: mIds } = await supabase.from('mentor_topics').select('telegram_id').eq('topic_id', topicId);
+  const ids = (mIds || []).map(x => x.telegram_id);
+  if (!ids.length) return safeSend(chatId, "No mentors for this topic.");
+
+  const { data: ms } = await supabase.from('users').select('telegram_id, anonymous_id, user_settings(display_name, bio)').in('telegram_id', ids).eq('is_banned', false).range(page*limit, (page+1)*limit-1);
   if (!ms?.length) return safeSend(chatId, "No mentors.");
+
   let t = `🔍 *Mentors*\n\n`;
-  const bs = ms.map(m => { t += `👤 *${m.user_settings?.display_name || m.anonymous_id}*\nBio: ${m.user_settings?.bio || '...'}\n\n`; return [{ text: `Request ${m.anonymous_id}`, callback_data: `mentor_req_${m.telegram_id}` }]; });
-  const nav = []; if (page > 0) nav.push({ text: '⬅️', callback_data: `mentors_page_${page-1}` }); if (ms.length === limit) nav.push({ text: '➡️', callback_data: `mentors_page_${page+1}` });
-  if (nav.length) bs.push(nav); await safeSend(chatId, t, { reply_markup: { inline_keyboard: bs } });
+  const bs = ms.map(m => {
+    t += `👤 *${m.user_settings?.display_name || m.anonymous_id}*\nBio: ${m.user_settings?.bio || '...'}\n\n`;
+    return [{ text: `Request ${m.anonymous_id}`, callback_data: `mentor_req_${m.telegram_id}_${topicId}` }];
+  });
+  if (page > 0) bs.push([{ text: '⬅️', callback_data: `mentors_page_${page-1}_${topicId}` }]); // Need to handle pagination with topicId
+  await safeSend(chatId, t, { reply_markup: { inline_keyboard: bs } });
 }
 
-async function acceptMentorship(mentorId, userId) {
-  const { data: ex } = await supabase.from('mentorship_assignments').select('id').eq('user_id', userId).eq('is_active', true).single();
-  if (ex) return safeSend(mentorId, "Already has a mentor.");
-  await supabase.from('mentorship_assignments').insert({ mentor_id: mentorId, user_id: userId });
+async function acceptMentorship(mentorId, userId, topicId) {
+  await supabase.from('mentorship_assignments').insert({ mentor_id: mentorId, user_id: userId, topic_id: topicId });
   await supabase.from('mentorship_requests').update({ status: 'accepted' }).eq('mentor_id', mentorId).eq('user_id', userId);
   await safeSend(userId, "✅ Mentorship Accepted! Type normally here to chat.");
-  await safeSend(mentorId, "✅ Accepted. Use `/reply @nickname` if you have multiple mentees.");
+  await safeSend(mentorId, "✅ Accepted.");
 }
 
 async function rejectMentorship(mentorId, userId) {
