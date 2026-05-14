@@ -18,3 +18,6 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 
 -- Index for journal entries
 CREATE INDEX idx_journal_entries_user ON journal_entries(telegram_id, created_at DESC);
+
+-- Add verse_time to user_settings
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS verse_time INT DEFAULT 7;
