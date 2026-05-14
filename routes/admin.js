@@ -108,12 +108,19 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
 
     const { data, count, error } = await supabase
       .from('mentor_applications')
-      .select('*, user:users!telegram_id(anonymous_id, sex, age_range, created_at)', { count: 'exact' })
+      .select('*, user:users(anonymous_id, sex, age_range, created_at)', { count: 'exact' })
       .eq('status', status)
       .order('submitted_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+        console.error('[Admin] Error fetching applications:', error);
+        return res.status(500).json({ error: error.message });
+    }
+    
+    if (!data?.length) {
+        console.log(`[Admin] No applications found for status: ${status}`);
+    }
     res.json({ applications: data || [], total: count || 0, page, pages: Math.ceil((count || 0) / limit) });
   });
 
@@ -135,9 +142,11 @@ module.exports = function adminRoutes(supabase, requireAuth, requireAdmin, io) {
     if (action === 'approved') {
       await supabase.from('users').update({ role: 'mentor' }).eq('telegram_id', app.telegram_id);
       await supabase.from('mentors').upsert({ telegram_id: app.telegram_id }, { onConflict: 'telegram_id' });
-      // FIX: notifyMentorApproved is now imported inside the handler
       const { notifyMentorApproved } = require('../bot');
       await notifyMentorApproved(app.telegram_id);
+    } else if (action === 'rejected') {
+      const { notifyMentorRejected } = require('../bot');
+      await notifyMentorRejected(app.telegram_id);
     }
 
     await logAudit(admin_id, `application_${action}`, app.telegram_id, 'mentor_application', { app_id: app.id });
