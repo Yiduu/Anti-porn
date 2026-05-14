@@ -57,9 +57,9 @@ async function showMainMenu(chatId, text) {
   keyboard.inline_keyboard.push([{ text: '📖 Bible Reading Streak', callback_data: 'menu_streak' }, { text: '✏️ Journal', callback_data: 'menu_journal' }]);
   keyboard.inline_keyboard.push([{ text: '📅 Daily Verse', callback_data: 'menu_verse' }, { text: '⚙️ Settings', callback_data: 'menu_settings' }]);
   
-  if (role === 'mentor') {
+  if (role === 'mentor' || role === 'admin') {
     keyboard.inline_keyboard.push([{ text: '👥 My Mentees', callback_data: 'menu_mentees' }, { text: '📅 Schedule Session', callback_data: 'menu_schedule' }]);
-  } else {
+  } else if (role === 'user') {
     keyboard.inline_keyboard.push([{ text: '🙏 Apply to Become a Mentor', callback_data: 'menu_apply' }]);
   }
   
@@ -163,9 +163,14 @@ bot.on('message', async (msg) => {
 
     if (command === '/apply') {
         const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
-        if (user?.role === 'mentor') return safeSend(chatId, "You are already a mentor.");
-        setState(chatId, 'apply_bio');
-        await safeSend(chatId, "Great! Tell us about yourself (Bio):");
+        if (user?.role === 'mentor' || user?.role === 'admin') return safeSend(chatId, "You are already a mentor.");
+        
+        // Check for pending application
+        const { data: existingApp } = await supabase.from('mentor_applications').select('id').eq('telegram_id', chatId).eq('status', 'pending').single();
+        if (existingApp) return safeSend(chatId, "You already have a pending application. Please wait for admin review.");
+
+        setState(chatId, 'awaiting_mentor_q1');
+        await safeSend(chatId, "How long have you been free from pornography (or your primary struggle)?");
         return;
     }
 
@@ -224,38 +229,38 @@ bot.on('message', async (msg) => {
       return;
     }
 
-    if (state.step === 'apply_bio') {
-        state.tempData.bio = text.trim();
-        setState(chatId, 'apply_spec', null, state.tempData);
-        await safeSend(chatId, "What is your specialization?");
+    if (state.step === 'awaiting_mentor_q1') {
+        state.tempData.q1 = text.trim();
+        setState(chatId, 'awaiting_mentor_q2', null, state.tempData);
+        await safeSend(chatId, "Describe the key steps that helped your recovery.");
         return;
     }
-    if (state.step === 'apply_spec') {
-        state.tempData.spec = text.trim();
-        const keyboard = await getTopicPickerKeyboard([], 'apply_topic_');
-        await safeSend(chatId, "Select your areas of expertise:", { reply_markup: keyboard });
-        setState(chatId, 'apply_topics', null, state.tempData);
+    if (state.step === 'awaiting_mentor_q2') {
+        state.tempData.q2 = text.trim();
+        setState(chatId, 'awaiting_mentor_q3', null, state.tempData);
+        await safeSend(chatId, "Any additional information you'd like to share? (optional, use /skip to skip)");
         return;
     }
-    if (state.step === 'apply_max_mentees') {
-        const max = parseInt(text);
-        if (isNaN(max) || max < 1 || max > 20) return safeSend(chatId, "❌ Enter 1-20.");
+    if (state.step === 'awaiting_mentor_q3') {
+        const q3 = text === '/skip' ? null : text.trim();
         
-        await supabase.from('mentor_applications').insert({
+        const { error } = await supabase.from('mentor_applications').insert({
             telegram_id: chatId,
-            answer_q1: `Bio: ${state.tempData.bio}`,
-            answer_q2: `Spec: ${state.tempData.spec}`,
-            status: 'pending'
+            answer_q1: state.tempData.q1,
+            answer_q2: state.tempData.q2,
+            answer_q3: q3,
+            status: 'pending',
+            submitted_at: new Date().toISOString()
         });
-        // Store expertise topics
-        if (state.tempData.selectedTopics) {
-            for (const tid of state.tempData.selectedTopics) {
-                await supabase.from('mentor_topics').insert({ telegram_id: chatId, topic_id: tid });
-            }
+        
+        if (error) {
+            console.error('[Bot] Mentor application error:', error);
+            await safeSend(chatId, "❌ Failed to submit application. Please try again later.");
+        } else {
+            await safeSend(chatId, "Thank you for applying. Your application has been submitted for admin review. You will be notified once a decision is made.");
         }
         
         clearState(chatId);
-        await safeSend(chatId, "✅ Application submitted! An admin will review it.");
         await showMainMenu(chatId);
         return;
     }
@@ -397,11 +402,6 @@ bot.on('callback_query', async (query) => {
                     inline_keyboard: [[{ text: 'English', callback_data: 'reg_lang_en' }, { text: 'Amharic (አማርኛ)', callback_data: 'reg_lang_am' }]]
                 }
             });
-        } else if (prefix === 'apply_topic_') {
-            // Mentor topics done -> ask for Max Mentees
-            state.tempData.selectedTopics = topics;
-            setState(chatId, 'apply_max_mentees', null, state.tempData);
-            await safeSend(chatId, "What is the maximum number of mentees you can handle? (1-20, default 5):");
         } else if (prefix === 'set_topics_') {
             await supabase.from('user_topics').delete().eq('telegram_id', chatId);
             for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
@@ -412,7 +412,7 @@ bot.on('callback_query', async (query) => {
         const current = state.tempData.selectedTopics || [];
         const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
         // Ensure state.step is preserved correctly
-        const nextStep = prefix === 'reg_topic_' ? 'reg_topics' : (prefix === 'apply_topic_' ? 'apply_topics' : 'edit_topics');
+        const nextStep = prefix === 'reg_topic_' ? 'reg_topics' : 'edit_topics';
         setState(chatId, nextStep, null, { ...state.tempData, selectedTopics: updated });
         await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, prefix), { chat_id: chatId, message_id: query.message.message_id });
     }
@@ -445,6 +445,21 @@ bot.on('callback_query', async (query) => {
     }
     const buttons = ut.map(t => [{ text: t.topics.name, callback_data: `search_topic_${t.topic_id}` }]);
     await safeSend(chatId, "Select a topic to find mentors:", { reply_markup: { inline_keyboard: buttons } });
+  } else if (data === 'menu_apply') {
+    const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
+    if (user?.role === 'mentor' || user?.role === 'admin') {
+      await bot.answerCallbackQuery(query.id, { text: "You are already a mentor.", show_alert: true });
+      return;
+    }
+    
+    const { data: existingApp } = await supabase.from('mentor_applications').select('id').eq('telegram_id', chatId).eq('status', 'pending').single();
+    if (existingApp) {
+      await bot.answerCallbackQuery(query.id, { text: "You already have a pending application.", show_alert: true });
+      return;
+    }
+
+    setState(chatId, 'awaiting_mentor_q1');
+    await safeSend(chatId, "How long have you been free from pornography (or your primary struggle)?");
   } else if (data.startsWith('search_topic_')) {
     await listMentors(chatId, 0, data.replace('search_topic_', ''));
   } else if (data.startsWith('mentors_page_')) {
@@ -629,19 +644,45 @@ async function toggleSetting(chatId, f) {
   await handleSettingsFlow(chatId);
 }
 
-// ─── Scheduler ────────────────────────────────────────────────────────────────
-setInterval(async () => {
-    const now = new Date(); if (now.getUTCMinutes() !== 0) return;
-    const { data: opted } = await supabase.from('user_settings').select('telegram_id, language').eq('notify_daily_verse', true).eq('verse_time', now.getUTCHours());
-    const { data: vs } = await supabase.from('daily_verses').select('*').eq('is_active', true);
-    const v = vs?.[Math.floor(Date.now() / 86400000) % vs.length];
-    if (v && opted?.length) {
-        for (const u of opted) {
-            let t = `📖 *Daily Verse*\n*${v.reference}*\n\n${v.text}`;
-            if (u.language === 'am') t += `\n\n🇪🇹 *Amharic:*\n_${await translateToAmharic(v.text)}_`;
-            await safeSend(u.telegram_id, t);
+async function notifyMentorApproved(chatId) {
+    await safeSend(chatId, "🎉 *Congratulations!*\n\nYour application to become a mentor has been approved. You now have access to mentor features in the menu.");
+    await showMainMenu(chatId);
+}
+
+async function notifyMentorRejected(chatId) {
+    const { data: app } = await supabase.from('mentor_applications').select('admin_note').eq('telegram_id', chatId).order('reviewed_at', { ascending: false }).limit(1).single();
+    let msg = "📋 *Application Update*\n\nUnfortunately, your application to become a mentor was not approved at this time.";
+    if (app?.admin_note) msg += `\n\n*Admin Note:* ${app.admin_note}`;
+    await safeSend(chatId, msg);
+}
+
+async function broadcastToAll(message, role_filter) {
+    let query = supabase.from('users').select('telegram_id').eq('is_banned', false);
+    if (role_filter) query = query.eq('role', role_filter);
+    const { data: users } = await query;
+    if (users) {
+        for (const u of users) {
+            await safeSend(u.telegram_id, `📢 *Broadcast Message*\n\n${message}`);
         }
+    }
+}
+
+// ─── Polling for Mentor Application Status ────────────────────────────────────
+let lastAppCheck = new Date().toISOString();
+setInterval(async () => {
+    const { data: apps } = await supabase
+        .from('mentor_applications')
+        .select('telegram_id, status, reviewed_at')
+        .neq('status', 'pending')
+        .gt('reviewed_at', lastAppCheck);
+    
+    if (apps?.length) {
+        for (const app of apps) {
+            if (app.status === 'approved') await notifyMentorApproved(app.telegram_id);
+            else if (app.status === 'rejected') await notifyMentorRejected(app.telegram_id);
+        }
+        lastAppCheck = new Date().toISOString();
     }
 }, 60 * 1000);
 
-module.exports = { bot };
+module.exports = { bot, notifyMentorApproved, notifyMentorRejected, broadcastToAll };
