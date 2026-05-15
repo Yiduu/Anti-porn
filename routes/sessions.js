@@ -67,11 +67,10 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
     // Add host as participant
     await supabase.from('session_participants').insert({ session_id: session.id, telegram_id: host_id });
 
-    // Add mentee if provided
-    if (mentee_id) {
+    // Add mentee if provided (private session)
+    if (mentee_id && !is_group) {
       await supabase.from('session_participants').insert({ session_id: session.id, telegram_id: mentee_id });
-
-      // Notify mentee via socket
+      
       const sock = onlineUsers.get(String(mentee_id));
       if (sock) {
         io.to(sock).emit('session_invite', {
@@ -84,15 +83,42 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
         });
       }
 
-      const { data: mentee } = await supabase.from('users').select('chat_id').eq('telegram_id', mentee_id).single();
-      if (mentee?.chat_id) {
-        // FIX: notifySessionInvite is now imported at the top of the file
-        await notifySessionInvite(mentee_id, {
+      await notifySessionInvite(mentee_id, {
+        session_id: session.id,
+        host: hostUser.anonymous_id,
+        title: session.title,
+        scheduled_at: session.scheduled_at,
+      });
+    }
+
+    // Handle group session participants if provided
+    if (is_group && Array.isArray(req.body.participant_ids)) {
+      for (const tid of req.body.participant_ids) {
+        // Skip host if they are in the list
+        if (String(tid) === String(host_id)) continue;
+
+        await supabase.from('session_participants').upsert({ session_id: session.id, telegram_id: tid }, { onConflict: 'session_id,telegram_id' });
+
+        // Notify via bot
+        await notifySessionInvite(tid, {
           session_id: session.id,
           host: hostUser.anonymous_id,
           title: session.title,
           scheduled_at: session.scheduled_at,
         });
+
+        // Notify via socket if online
+        const sock = onlineUsers.get(String(tid));
+        if (sock) {
+          io.to(sock).emit('session_invite', {
+            session_id: session.id,
+            room_name: roomName,
+            room_password: roomPassword,
+            host: hostUser.anonymous_id,
+            title: session.title,
+            scheduled_at: session.scheduled_at,
+          });
+        }
       }
     }
 
