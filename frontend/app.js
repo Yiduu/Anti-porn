@@ -668,11 +668,10 @@ function startPrivateSession(menteeId) {
 function launchJitsi(roomName, roomPassword, displayName, token) {
   navigate('video');
   const container = $('jitsiContainer');
+  if (!container) return;
   container.innerHTML = '';
 
-  const script = document.createElement('script');
-  script.src = 'https://meet.jit.si/external_api.js';
-  script.onload = () => {
+  const initJitsi = () => {
     const options = {
       roomName,
       width: '100%',
@@ -693,13 +692,27 @@ function launchJitsi(roomName, roomPassword, displayName, token) {
       },
       ...(token ? { jwt: token } : {}),
     };
-    jitsiApi = new JitsiMeetExternalAPI('meet.jit.si', options);
-    jitsiApi.addEventListener('videoConferenceLeft', () => navigate('sessions'));
-    jitsiApi.addEventListener('passwordRequired', () => {
-      jitsiApi.executeCommand('password', roomPassword);
+    
+    // Dispose old instance if exists
+    if (window.jitsiApi) {
+      try { window.jitsiApi.dispose(); } catch (e) { console.error(e); }
+    }
+    
+    window.jitsiApi = new JitsiMeetExternalAPI('meet.jit.si', options);
+    window.jitsiApi.addEventListener('videoConferenceLeft', () => navigate('sessions'));
+    window.jitsiApi.addEventListener('passwordRequired', () => {
+      if (roomPassword) window.jitsiApi.executeCommand('password', roomPassword);
     });
   };
-  document.head.appendChild(script);
+
+  if (window.JitsiMeetExternalAPI) {
+    initJitsi();
+  } else {
+    const script = document.createElement('script');
+    script.src = 'https://meet.jit.si/external_api.js';
+    script.onload = initJitsi;
+    document.head.appendChild(script);
+  }
 
   $('sessionPasswordDisplay').textContent = roomPassword ? `Password: ${roomPassword}` : '';
 }
