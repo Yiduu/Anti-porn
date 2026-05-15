@@ -526,7 +526,7 @@ async function joinSession(session_id) {
   }
 }
 
-async function createSession(is_group = false, mentee_id = null, scheduled_at = null, customTitle = null) {
+async function createSession(is_group = false, mentee_id = null, scheduled_at = null, customTitle = null, participant_ids = []) {
   try {
     if (!is_group && !mentee_id && currentUser?.role === 'mentor') {
       const res = await apiFetch('/api/users/chat-partner');
@@ -546,7 +546,13 @@ async function createSession(is_group = false, mentee_id = null, scheduled_at = 
     
     const data = await apiFetch('/api/sessions/create', {
       method: 'POST',
-      body: { is_group, title, scheduled_at: finalScheduled, mentee_id: mentee_id || null }
+      body: { 
+        is_group, 
+        title, 
+        scheduled_at: finalScheduled, 
+        mentee_id: mentee_id || null,
+        participant_ids: participant_ids.length ? participant_ids : undefined
+      }
     });
     
     showToast(is_group ? 'Group session created!' : 'Private session created!', 'success');
@@ -563,6 +569,8 @@ async function createSession(is_group = false, mentee_id = null, scheduled_at = 
 function showScheduleModal(is_group, mentee_id = null) {
   const modal = document.getElementById('scheduleModal');
   const titleField = document.getElementById('groupTitleField');
+  const participantField = document.getElementById('groupParticipantsField');
+  const menteeList = document.getElementById('menteeCheckboxes');
   const modalTitle = document.getElementById('scheduleModalTitle');
   const btn = document.getElementById('scheduleBtn');
   
@@ -570,7 +578,26 @@ function showScheduleModal(is_group, mentee_id = null) {
   
   modalTitle.textContent = is_group ? 'Schedule Group Session' : 'Schedule 1-on-1 Session';
   titleField.classList.toggle('hidden', !is_group);
+  participantField.classList.toggle('hidden', !is_group);
   
+  if (is_group && menteeList) {
+    menteeList.innerHTML = '<div class="text-xs text-dim">Loading mentees...</div>';
+    apiFetch('/api/mentors/my-mentees').then(mentees => {
+      if (!mentees.length) {
+        menteeList.innerHTML = '<div class="text-xs text-dim">No mentees to invite.</div>';
+        return;
+      }
+      menteeList.innerHTML = mentees.map(m => `
+        <label class="flex items-center gap-8 mb-4" style="cursor:pointer">
+          <input type="checkbox" name="invite_mentee" value="${m.user.telegram_id}" />
+          <span class="text-sm">${escapeHtml(m.user.anonymous_id)}</span>
+        </label>
+      `).join('');
+    }).catch(e => {
+      menteeList.innerHTML = `<div class="text-danger text-xs">${e.message}</div>`;
+    });
+  }
+
   // Set default values (1 hour from now)
   const now = new Date();
   now.setHours(now.getHours() + 1);
@@ -588,10 +615,17 @@ function showScheduleModal(is_group, mentee_id = null) {
       showToast('Please pick date and time', 'error');
       return;
     }
+
+    const participant_ids = [];
+    if (is_group) {
+      document.querySelectorAll('input[name="invite_mentee"]:checked').forEach(cb => {
+        participant_ids.push(cb.value);
+      });
+    }
     
     const scheduledAt = new Date(`${date}T${time}`).toISOString();
     closeScheduleModal();
-    createSession(is_group, mentee_id, scheduledAt, title);
+    createSession(is_group, mentee_id, scheduledAt, title, participant_ids);
   };
 }
 
