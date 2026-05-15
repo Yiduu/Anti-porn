@@ -826,7 +826,20 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-module.exports = { bot, notifyMentorApproved, notifyMentorRejected, broadcastToAll };
+async function notifySessionInvite(chatId, sessionInfo) {
+    const link = `${APP_URL}?start=session_${sessionInfo.session_id}`;
+    const text = `🙏 *New Session Scheduled!*\n\nHost: *${sessionInfo.host}*\nTitle: *${sessionInfo.title}*\nTime: ${formatUserDateTime(sessionInfo.scheduled_at)}\n\nJoin here: ${link}`;
+    
+    await safeSend(chatId, text, {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📹 Join Session', url: `https://t.me/${process.env.BOT_USERNAME || 'RecoveryBot'}?start=session_${sessionInfo.session_id}` }]
+            ]
+        }
+    });
+}
+
+module.exports = { bot, notifyMentorApproved, notifyMentorRejected, broadcastToAll, notifySessionInvite };
 
 // Periodic cleanup for userStates
 setInterval(() => {
