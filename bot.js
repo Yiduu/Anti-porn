@@ -379,7 +379,11 @@ bot.on('message', async (msg) => {
 
   // Pure Chat Forwarding
   const partnersInfo = await getActiveChatPartners(chatId);
-  if (!partnersInfo) return safeSend(chatId, "No active partner. Use /menu to find one.");
+  if (!partnersInfo) {
+    const keyboard = { inline_keyboard: [[{ text: '🔍 Find a Mentor', callback_data: 'menu_mentors' }]] };
+    await safeSend(chatId, "You don't have an active mentor/mentee yet. Tap below to find a mentor.", { reply_markup: keyboard });
+    return;
+  }
 
   let targetId = null;
   if (partnersInfo.partners.length === 1) {
@@ -535,13 +539,14 @@ bot.on('callback_query', async (query) => {
             [{ text: `🔔 Verse: ${s.notif_verse ? 'ON' : 'OFF'}`, callback_data: 'settings_toggle_notif_verse' }],
             [{ text: `🔔 Messages: ${s.notif_messages ? 'ON' : 'OFF'}`, callback_data: 'settings_toggle_notif_messages' }],
             [{ text: `⏰ Verse Time: ${s.verse_time}:00`, callback_data: 'settings_time' }],
-            [{ text: `🌍 Language: ${s.language === 'en' ? 'EN' : 'AM'}`, callback_data: 'settings_lang' }]
+            [{ text: `🌍 Language: ${s.language === 'en' ? 'EN' : 'AM'}`, callback_data: 'settings_lang' }],
+            [{ text: '📚 My Topics', callback_data: 'settings_topics' }]
         ]
     };
 
     // Only show Expertise Topics to mentors or admins
     if (user?.role === 'mentor' || user?.role === 'admin') {
-        kb.inline_keyboard.push([{ text: '📚 My Expertise Topics', callback_data: 'menu_mentor_topics' }]);
+        kb.inline_keyboard.push([{ text: '🎓 My Expertise Topics', callback_data: 'menu_mentor_topics' }]);
     }
     
     await safeSend(chatId, "⚙️ *Settings*", { reply_markup: kb });
@@ -575,6 +580,36 @@ bot.on('callback_query', async (query) => {
     await showMainMenu(chatId);
     await bot.answerCallbackQuery(query.id);
     return;
+  }
+  
+  // Settings: My Topics
+  else if (data === 'settings_topics') {
+    const { data: userTopics } = await supabase.from('user_topics').select('topic_id').eq('telegram_id', chatId);
+    const selectedIds = (userTopics || []).map(ut => ut.topic_id);
+    setState(chatId, 'edit_user_topics', null, { selectedTopics: selectedIds });
+    const kb = await getTopicPickerKeyboard(selectedIds, 'settings_topic_');
+    await safeSend(chatId, "Select the areas you need support with (toggle on/off):", { reply_markup: kb });
+  }
+  else if (data.startsWith('settings_topic_')) {
+    const action = data.replace('settings_topic_', '');
+    if (!state) return safeSend(chatId, "Session expired.");
+
+    if (action === 'done') {
+      const topics = state.tempData.selectedTopics || [];
+      await supabase.from('user_topics').delete().eq('telegram_id', chatId);
+      for (const tid of topics) {
+        await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
+      }
+      await safeSend(chatId, "✅ Your topics have been updated.");
+      clearState(chatId);
+      await showMainMenu(chatId);
+    } else {
+      const tid = parseInt(action);
+      const current = state.tempData.selectedTopics || [];
+      const updated = current.includes(tid) ? current.filter(x => x !== tid) : [...current, tid];
+      setState(chatId, 'edit_user_topics', null, { ...state.tempData, selectedTopics: updated });
+      await bot.editMessageReplyMarkup(await getTopicPickerKeyboard(updated, 'settings_topic_'), { chat_id: chatId, message_id: query.message.message_id });
+    }
   }
   else if (data.startsWith('settings_toggle_')) await toggleSetting(chatId, data.replace('settings_toggle_', ''));
   else if (data === 'menu_schedule') {
@@ -792,3 +827,11 @@ setInterval(async () => {
 }, 60 * 1000);
 
 module.exports = { bot, notifyMentorApproved, notifyMentorRejected, broadcastToAll };
+
+// Periodic cleanup for userStates
+setInterval(() => {
+  const now = Date.now();
+  for (const [chatId, state] of userStates.entries()) {
+    if (state.expires < now) userStates.delete(chatId);
+  }
+}, 60 * 60 * 1000);
