@@ -25,6 +25,12 @@
         <label class="form-label">Time</label>
         <input id="scheduleTime" type="time" class="form-control" />
       </div>
+      <div id="groupParticipantsField" class="form-group hidden">
+        <label class="form-label">Invite Participants (Mentees)</label>
+        <div id="menteeCheckboxes" style="max-height:150px;overflow-y:auto;background:var(--bg3);padding:8px;border-radius:var(--radius-sm)">
+          <!-- Dynamic mentee list -->
+        </div>
+      </div>
       <div class="flex gap-8 mt-16">
         <button class="btn btn-outline flex-1" onclick="closeScheduleModal()">Cancel</button>
         <button id="scheduleBtn" class="btn btn-primary flex-1">Schedule</button>
