@@ -679,7 +679,7 @@ async function loadChat() {
     window.pendingChatPartner = null;
 
     const res = await apiFetch('/api/users/chat-partner');
-    console.log('[Chat] partner response:', res); // Log full response for diagnosis
+    console.log('[Chat] partner response:', res);
     const selector = $('chatPartnerSelect');
     
     if (res.type === 'none') {
@@ -691,26 +691,12 @@ async function loadChat() {
       return;
     }
 
-    // FIX: Safety check - force input row to show if we have any partner
-    $('chatInputRow').style.display = 'flex';
-
+    // Partner confirmed
     if (res.type === 'single') {
       selector.style.display = 'none';
       $('chatWith').style.display = 'block';
       $('chatWith').textContent = res.partner.display_name;
       window.chatState = { with: res.partner.telegram_id, name: res.partner.anonymous_id };
-
-      // Force chat input row to be visible (aggressive)
-      const inputRow = document.getElementById('chatInputRow');
-      if (inputRow) {
-        inputRow.style.display = 'flex';
-        inputRow.style.visibility = 'visible';
-        inputRow.style.opacity = '1';
-        console.log('[Chat] Input row forced visible (single)');
-      } else {
-        console.error('[Chat] chatInputRow not found in DOM!');
-      }
-
       loadMessages(res.partner.telegram_id);
     } else {
       // Multiple mentees (mentor)
@@ -723,36 +709,30 @@ async function loadChat() {
       
       const partner = res.mentees.find(m => String(m.telegram_id) === String(selectedId)) || res.mentees[0];
       window.chatState = { with: partner.telegram_id, name: partner.anonymous_id };
-      
-      // Force chat input row to be visible (aggressive)
-      const inputRow = document.getElementById('chatInputRow');
-      if (inputRow) {
-        inputRow.style.display = 'flex';
-        inputRow.style.visibility = 'visible';
-        inputRow.style.opacity = '1';
-        console.log('[Chat] Input row forced visible (multiple)');
-      } else {
-        console.error('[Chat] chatInputRow not found in DOM!');
-      }
-
-      // Ensure the chat area is visible and properly initialized
-      $('chatMessages').innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
       loadMessages(partner.telegram_id);
     }
 
-    // FIX: Fallback timeout to ensure visibility after 500ms
+    // Ensure input row is visible when a partner exists
+    const inputRow = document.getElementById('chatInputRow');
+    if (inputRow) {
+      inputRow.style.display = 'flex';
+      inputRow.style.visibility = 'visible';
+      inputRow.style.opacity = '1';
+      console.log('[Chat] Input row set to flex');
+    }
+
+    // Safety check: force visibility after a short delay
     setTimeout(() => {
-      const display = window.getComputedStyle($('chatInputRow')).display;
-      if (display === 'none' && res.type !== 'none') {
-        console.warn('[Chat] Input row was still hidden, forcing flex display');
-        $('chatInputRow').style.display = 'flex';
+      const row = document.getElementById('chatInputRow');
+      if (row && getComputedStyle(row).display === 'none' && res.type !== 'none') {
+        row.style.display = 'flex';
+        console.log('[Chat] forced input row visible via safety check');
       }
-    }, 500);
+    }, 300);
 
   } catch (e) {
     console.error('[Chat] Error:', e);
     $('chatMessages').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
-    // FIX: Only hide if mentorship is completely broken
     if (e.message.includes('No active mentorship')) {
       $('chatInputRow').style.display = 'none';
     }
