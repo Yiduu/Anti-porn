@@ -488,7 +488,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .flex-1 { flex: 1; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .divider { height: 1px; background: var(--border-dim); margin: 16px 0; }
-.chat-input-row, #chatInputRow { display: none !important; }
+.chat-input-row, #chatInputRow { display: flex; visibility: visible; }
 .hidden { display: none !important; }
 
 /* ─── Responsive ────────────────────────────────────────────── */
