@@ -13,6 +13,21 @@ let chart = null;
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
+// Haptic Feedback Helper
+function haptic(type = 'light') {
+  const tg = window.Telegram?.WebApp;
+  if (!tg?.HapticFeedback) return;
+  try {
+    if (type === 'light' || type === 'medium' || type === 'heavy') {
+      tg.HapticFeedback.impactOccurred(type);
+    } else if (type === 'success' || type === 'warning' || type === 'error') {
+      tg.HapticFeedback.notificationOccurred(type);
+    } else if (type === 'selection') {
+      tg.HapticFeedback.selectionChanged();
+    }
+  } catch (e) { console.warn('Haptic error:', e); }
+}
+
 function getTelegramData() {
   if (window.Telegram?.WebApp) {
     return {
@@ -100,6 +115,7 @@ function setTheme(theme) {
   if (icon) icon.textContent = theme === 'light' ? '🌙' : '☀️';
 }
 function toggleTheme() {
+  haptic('light');
   const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   setTheme(cur === 'dark' ? 'light' : 'dark');
 }
@@ -122,25 +138,24 @@ async function init() {
         return;
       }
       startApp();
-    }
-    
-    // Deep link handling
-    const urlParams = new URLSearchParams(window.location.search);
-    const startParam = urlParams.get('start');
-    if (startParam && startParam.startsWith('session_')) {
-      const sessionId = startParam.replace('session_', '');
-      setTimeout(() => {
-        joinSession(sessionId);
-      }, 1000);
+      handleDeepLink();
     }
   } catch (e) {
     console.error(e);
     showToast('Connection error', 'error');
-    // Show onboarding as fallback
     showOnboarding();
   }
 
   $('loadingScreen')?.classList.add('hidden');
+}
+
+function handleDeepLink() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const startParam = urlParams.get('start');
+  if (startParam && startParam.startsWith('session_')) {
+    const sessionId = startParam.replace('session_', '');
+    setTimeout(() => joinSession(sessionId), 100);
+  }
 }
 
 // ─── Socket Setup ─────────────────────────────────────────────
@@ -159,9 +174,11 @@ function connectSocket() {
     } else {
       updateMessageBadge();
       showToast('New message received');
+      haptic('medium');
     }
   });
   socket.on('session_invite', (session) => {
+    haptic('success');
     showToast(`📹 Session invite: ${session.title}`, 'info');
     if (confirm('A new session has been scheduled. Go to Sessions page to join?')) {
       navigate('sessions');
@@ -178,6 +195,7 @@ function connectSocket() {
     }
   });
   socket.on('new_mentorship_request', () => {
+    haptic('success');
     showToast('New mentorship request received! 🙏', 'success');
     if (currentPage === 'requests') loadRequests();
   });
@@ -185,6 +203,7 @@ function connectSocket() {
 
 // ─── Navigation ───────────────────────────────────────────────
 function navigate(page) {
+  haptic('selection');
   currentPage = page;
   $$('.page').forEach(p => p.classList.remove('active'));
   $$('.nav-item').forEach(n => n.classList.remove('active'));
@@ -196,27 +215,22 @@ function navigate(page) {
     case 'dashboard': loadDashboard(); break;
     case 'mentors': loadMentors(); break;
     case 'sessions': loadSessions(); break;
-    case 'chat': 
-      loadChat(); 
-      // Force input row to appear after a short delay (allow loadChat to finish)
-      setTimeout(forceShowChatInputRow, 200);
-      break;
+    case 'chat': loadChat(); break;
     case 'requests': loadRequests(); break;
     case 'settings': loadSettings(); break;
     case 'my-mentees': loadMyMentees(); break;
   }
 }
 
-// FIX: Direct force-show helper for chat input
-function forceShowChatInputRow() {
-  const row = document.getElementById('chatInputRow');
-  if (row) {
+function toggleChatInput(visible) {
+  const row = $('chatInputRow');
+  if (!row) return;
+  if (visible) {
+    row.classList.remove('hidden');
     row.style.display = 'flex';
-    row.style.visibility = 'visible';
-    row.style.opacity = '1';
-    console.log('[FIX] Chat input row forced visible');
   } else {
-    console.error('[FIX] chatInputRow missing');
+    row.classList.add('hidden');
+    row.style.display = 'none';
   }
 }
 
@@ -230,6 +244,7 @@ function showOnboarding() {
 }
 
 function showStep(step) {
+  haptic('light');
   onboardingStep = step;
   $$('.step-dot').forEach((d, i) => {
     d.classList.toggle('active', i === step);
@@ -245,12 +260,13 @@ async function completeRegistration() {
   const nickname = $('regNickname').value.trim();
 
   if (!sex || !age_range || !education_level || !nickname) { 
+    haptic('error');
     showToast('Please complete all fields', 'error'); return; 
   }
 
-  // Validate nickname: 3-20 chars, alphanumeric + underscores
   const nickRegex = /^[a-zA-Z0-9_]{3,20}$/;
   if (!nickRegex.test(nickname)) {
+    haptic('error');
     showToast('Invalid nickname format (3-20 chars, no spaces)', 'error'); return;
   }
 
@@ -262,11 +278,13 @@ async function completeRegistration() {
       method: 'POST',
       body: { sex, age_range, education_level, nickname, chat_id: getTelegramData().user?.id },
     });
+    haptic('success');
     currentUser = data.user;
     $('onboarding').style.display = 'none';
     startApp();
     showToast('Welcome! You are now registered 🙏', 'success');
   } catch (e) {
+    haptic('error');
     if (e.message.includes('taken')) {
       showToast('Nickname taken, try another', 'error');
     } else {
@@ -284,36 +302,30 @@ function startApp() {
   navigate('dashboard');
   updateMessageBadge();
 
-  // Show admin button if current user is admin
   if (String(currentUser?.telegram_id) === String(window.ADMIN_ID)) {
     $('adminBtn')?.classList.remove('hidden');
   }
 
-  // Show requests nav if mentor
   if (currentUser?.role === 'mentor') {
     $('nav-requests')?.classList.remove('hidden');
     $('nav-my-mentees')?.style.setProperty('display', 'flex');
   }
 
-  // Initial translation
   applyLanguage();
 }
 
-// Keep-alive for Render free tier
 function keepAlive() {
   setInterval(() => fetch(`${API}/health`).catch(() => {}), 4 * 60 * 1000);
 }
 
 // ─── Dashboard ────────────────────────────────────────────────
 async function loadDashboard() {
-  // Load verse
   try {
     const verse = await apiFetch('/api/auth/verse');
     $('verseText').textContent = verse.text;
     $('verseRef').textContent = verse.reference;
   } catch {}
 
-  // Load stats
   try {
     const stats = await apiFetch('/api/users/stats');
     $('statUsers').textContent = stats.total_users;
@@ -321,10 +333,8 @@ async function loadDashboard() {
     $('statSessions').textContent = stats.sessions_today;
   } catch {}
 
-  // Load chart
   loadActivityChart();
 
-  // Show admin button if admin
   if (String(currentUser?.telegram_id) === String(window.ADMIN_ID)) {
     $('adminBtn')?.classList.remove('hidden');
   }
@@ -412,11 +422,14 @@ async function loadMentors() {
 }
 
 async function requestMentorship(mentor_id) {
+  haptic('medium');
   try {
     await apiFetch('/api/mentors/request', { method: 'POST', body: { mentor_id, message: 'I would like your mentorship.' } });
+    haptic('success');
     showToast('Mentorship request sent! 🙏', 'success');
     loadMentors();
   } catch (e) {
+    haptic('error');
     showToast(e.message, 'error');
   }
 }
@@ -452,21 +465,23 @@ async function loadRequests() {
 }
 
 async function respondToRequest(requestId, action) {
+  haptic('medium');
   try {
     await apiFetch(`/api/mentors/request/${requestId}`, {
       method: 'PATCH',
       body: { action }
     });
+    haptic('success');
     showToast(`Request ${action}`, 'success');
     loadRequests();
   } catch (e) {
+    haptic('error');
     showToast(e.message, 'error');
   }
 }
 
 // ─── Sessions ─────────────────────────────────────────────────
 async function loadSessions() {
-  // Load private sessions (1-on-1 and group where user is participant)
   try {
     const mySessions = await apiFetch('/api/sessions/my');
     const privateContainer = document.getElementById('privateSessionsList');
@@ -492,7 +507,6 @@ async function loadSessions() {
     }
   } catch (e) { console.error('Error loading private sessions', e); }
 
-  // Load upcoming group sessions
   try {
     const upcoming = await apiFetch('/api/sessions/upcoming');
     const container = document.getElementById('upcomingSessions');
@@ -518,15 +532,18 @@ async function loadSessions() {
 }
 
 async function joinSession(session_id) {
+  haptic('medium');
   try {
     const data = await apiFetch(`/api/sessions/${session_id}/join`);
     launchJitsi(data.room_name, data.room_password, data.display_name, data.jitsi_token);
   } catch (e) {
+    haptic('error');
     showToast(e.message, 'error');
   }
 }
 
 async function createSession(is_group = false, mentee_id = null, scheduled_at = null, customTitle = null, participant_ids = []) {
+  haptic('light');
   try {
     if (!is_group && !mentee_id && currentUser?.role === 'mentor') {
       const res = await apiFetch('/api/users/chat-partner');
@@ -536,6 +553,7 @@ async function createSession(is_group = false, mentee_id = null, scheduled_at = 
         openMenteeSelectModal();
         return;
       } else {
+        haptic('error');
         showToast('No active mentees to start a session with.', 'error');
         return;
       }
@@ -555,6 +573,7 @@ async function createSession(is_group = false, mentee_id = null, scheduled_at = 
       }
     });
     
+    haptic('success');
     showToast(is_group ? 'Group session created!' : 'Private session created!', 'success');
     if (new Date(finalScheduled) <= new Date()) {
       launchJitsi(data.room_name, data.room_password, currentUser.anonymous_id, data.jitsi_token);
@@ -562,11 +581,13 @@ async function createSession(is_group = false, mentee_id = null, scheduled_at = 
       loadSessions();
     }
   } catch (e) {
+    haptic('error');
     showToast(e.message, 'error');
   }
 }
 
 function showScheduleModal(is_group, mentee_id = null) {
+  haptic('light');
   const modal = document.getElementById('scheduleModal');
   const titleField = document.getElementById('groupTitleField');
   const participantField = document.getElementById('groupParticipantsField');
@@ -598,7 +619,6 @@ function showScheduleModal(is_group, mentee_id = null) {
     });
   }
 
-  // Set default values (1 hour from now)
   const now = new Date();
   now.setHours(now.getHours() + 1);
   document.getElementById('scheduleDate').value = now.toISOString().split('T')[0];
@@ -607,11 +627,13 @@ function showScheduleModal(is_group, mentee_id = null) {
   modal.classList.add('open');
   
   btn.onclick = () => {
+    haptic('medium');
     const date = document.getElementById('scheduleDate').value;
     const time = document.getElementById('scheduleTime').value;
     const title = document.getElementById('scheduleTitle').value || (is_group ? 'Group Session' : '1-on-1 Session');
     
     if (!date || !time) {
+      haptic('error');
       showToast('Please pick date and time', 'error');
       return;
     }
@@ -623,17 +645,26 @@ function showScheduleModal(is_group, mentee_id = null) {
       });
     }
     
-    const scheduledAt = new Date(`${date}T${time}`).toISOString();
+    const scheduledAtObj = new Date(`${date}T${time}`);
+    if (isNaN(scheduledAtObj.getTime())) {
+      haptic('error');
+      showToast('Invalid date or time selected', 'error');
+      return;
+    }
+    
+    const scheduledAt = scheduledAtObj.toISOString();
     closeScheduleModal();
     createSession(is_group, mentee_id, scheduledAt, title, participant_ids);
   };
 }
 
 function closeScheduleModal() {
+  haptic('light');
   document.getElementById('scheduleModal')?.classList.remove('open');
 }
 
 function openMenteeSelectModal() {
+  haptic('light');
   const modal = $('menteeSelectModal');
   const list = $('menteeSelectList');
   if (!modal || !list) return;
@@ -657,6 +688,7 @@ function openMenteeSelectModal() {
 }
 
 function closeMenteeSelectModal() {
+  haptic('light');
   $('menteeSelectModal')?.classList.remove('open');
 }
 
@@ -693,7 +725,6 @@ function launchJitsi(roomName, roomPassword, displayName, token) {
       ...(token ? { jwt: token } : {}),
     };
     
-    // Dispose old instance if exists
     if (window.jitsiApi) {
       try { window.jitsiApi.dispose(); } catch (e) { console.error(e); }
     }
@@ -726,19 +757,17 @@ async function loadChat() {
     window.pendingChatPartner = null;
 
     const res = await apiFetch('/api/users/chat-partner');
-    console.log('[Chat] partner response:', res);
     const selector = $('chatPartnerSelect');
     
     if (res.type === 'none') {
       $('chatMessages').innerHTML = '<div class="empty-state"><span>No active mentorship.</span></div>';
-      $('chatInputRow').style.display = 'none';
+      toggleChatInput(false);
       $('chatWith').style.display = 'block';
       $('chatWith').textContent = 'Messages';
       selector.style.display = 'none';
       return;
     }
 
-    // Partner confirmed
     if (res.type === 'single') {
       selector.style.display = 'none';
       $('chatWith').style.display = 'block';
@@ -746,7 +775,6 @@ async function loadChat() {
       window.chatState = { with: res.partner.telegram_id, name: res.partner.anonymous_id };
       loadMessages(res.partner.telegram_id);
     } else {
-      // Multiple mentees (mentor)
       $('chatWith').style.display = 'none';
       selector.style.display = 'block';
       selector.innerHTML = res.mentees.map(m => `<option value="${m.telegram_id}">${escapeHtml(m.display_name)}</option>`).join('');
@@ -759,37 +787,22 @@ async function loadChat() {
       loadMessages(partner.telegram_id);
     }
 
-    // Ensure input row is visible when a partner exists
-    const inputRow = document.getElementById('chatInputRow');
-    if (inputRow) {
-      inputRow.style.display = 'flex';
-      inputRow.style.visibility = 'visible';
-      inputRow.style.opacity = '1';
-      console.log('[Chat] Input row set to flex');
-    }
-
-    // Safety check: force visibility after a short delay
-    setTimeout(() => {
-      const row = document.getElementById('chatInputRow');
-      if (row && getComputedStyle(row).display === 'none' && res.type !== 'none') {
-        row.style.display = 'flex';
-        console.log('[Chat] forced input row visible via safety check');
-      }
-    }, 300);
+    toggleChatInput(true);
 
   } catch (e) {
     console.error('[Chat] Error:', e);
     $('chatMessages').innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`;
     if (e.message.includes('No active mentorship')) {
-      $('chatInputRow').style.display = 'none';
+      toggleChatInput(false);
     }
     $('chatWith').textContent = 'Error loading chat';
   }
 }
 
 function switchChatPartner(tid) {
+  haptic('selection');
   window.chatState.with = tid;
-  forceShowChatInputRow(); // FIX: ensure input row visible
+  toggleChatInput(true);
   loadMessages(tid);
 }
 
@@ -824,6 +837,7 @@ function appendMessage(msg, isSent) {
 }
 
 async function sendMessage() {
+  haptic('light');
   const input = $('chatInput');
   const content = input.value.trim();
   if (!content || !window.chatState.with) return;
@@ -836,6 +850,7 @@ async function sendMessage() {
     });
     appendMessage(msg, true);
   } catch (e) {
+    haptic('error');
     showToast(e.message, 'error');
   }
 }
@@ -880,6 +895,7 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+  haptic('medium');
   const body = {
     display_name: $('settingDisplayName').value,
     timezone: $('settingTimezone').value,
@@ -892,45 +908,56 @@ async function saveSettings() {
   };
   try {
     await apiFetch('/api/users/settings', { method: 'PATCH', body });
+    haptic('success');
     showToast('Settings saved', 'success');
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) {
+    haptic('error');
+    showToast(e.message, 'error');
+  }
 }
 
 function toggleNotif(id) {
+  haptic('light');
   const el = $(id);
   el.classList.toggle('on');
 }
 
 // ─── Mentor Application ───────────────────────────────────────
 function openApplyModal() {
+  haptic('light');
   $('applyModal').classList.add('open');
 }
 function closeApplyModal() {
+  haptic('light');
   $('applyModal').classList.remove('open');
 }
 async function submitApplication() {
+  haptic('medium');
   const q1 = $('applyQ1').value.trim();
   const q2 = $('applyQ2').value.trim();
-  if (!q1 || !q2) { showToast('Please answer all questions', 'error'); return; }
+  if (!q1 || !q2) { haptic('error'); showToast('Please answer all questions', 'error'); return; }
 
   try {
     await apiFetch('/api/users/apply-mentor', { method: 'POST', body: { answer_q1: q1, answer_q2: q2 } });
+    haptic('success');
     showToast('Application submitted! 🙏', 'success');
     closeApplyModal();
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) { haptic('error'); showToast(e.message, 'error'); }
 }
 
 // ─── Support Ticket ───────────────────────────────────────────
 async function submitTicket() {
+  haptic('medium');
   const subject = $('ticketSubject').value.trim();
   const description = $('ticketDesc').value.trim();
-  if (!subject || !description) { showToast('Fill in all fields', 'error'); return; }
+  if (!subject || !description) { haptic('error'); showToast('Fill in all fields', 'error'); return; }
 
   try {
     await apiFetch('/api/support', { method: 'POST', body: { subject, description } });
+    haptic('success');
     showToast('Ticket submitted', 'success');
     $('ticketSubject').value = ''; $('ticketDesc').value = '';
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) { haptic('error'); showToast(e.message, 'error'); }
 }
 
 // ─── Localization ─────────────────────────────────────────────
@@ -1024,17 +1051,15 @@ function applyLanguage() {
       el.textContent = translated;
     }
   });
-  // Sync dropdown
   const langSelect = $('settingLanguage');
   if (langSelect) langSelect.value = currentLanguage;
 }
 
 function changeLanguage(lang) {
+  haptic('selection');
   currentLanguage = lang;
   localStorage.setItem('language', lang);
   applyLanguage();
-  // We can't translate the Bible verse on the fly anymore without the API
-  // but we can reload the dashboard if needed
   loadDashboard();
 }
 
@@ -1078,7 +1103,6 @@ async function loadMyMentees() {
     }
     container.innerHTML = html;
     
-    // Load notes
     for (const m of mentees) {
       const note = await apiFetch(`/api/mentors/notes/${m.user.telegram_id}`);
       if (note.content) $(`note-${m.user.telegram_id}`).value = note.content;
@@ -1090,16 +1114,19 @@ async function saveMentorNote(menteeId) {
   const content = $(`note-${menteeId}`).value.trim();
   try {
     await apiFetch('/api/mentors/notes', { method: 'POST', body: { mentee_id: menteeId, content } });
+    haptic('light');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function endMentorship(assignId) {
   if (!confirm('End this mentorship assignment?')) return;
+  haptic('medium');
   try {
     await apiFetch(`/api/mentors/end-mentorship/${assignId}`, { method: 'DELETE' });
+    haptic('success');
     showToast('Mentorship ended', 'success');
     loadMyMentees();
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) { haptic('error'); showToast(e.message, 'error'); }
 }
 
 // ─── Boot ─────────────────────────────────────────────────────
