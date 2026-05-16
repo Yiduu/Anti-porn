@@ -790,6 +790,7 @@ bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
   const state = getState(chatId);
+  const lang = await getUserLang(chatId);
   if (!text) return;
 
   await touchActivity(chatId);
