@@ -166,6 +166,15 @@ async function showPersistentMenu(chatId, customText) {
   });
 }
 
+async function showCancelKeyboard(chatId, promptText) {
+  const lang = await getUserLang(chatId);
+  return safeSend(chatId, promptText, {
+    reply_markup: {
+      inline_keyboard: [[{ text: tSync(lang, 'btn_cancel'), callback_data: 'cancel_operation' }]]
+    }
+  });
+}
+
 // ─── Topic Picker ─────────────────────────────────────────────────────────────
 
 async function getTopicPickerKeyboard(selectedIds = [], actionPrefix = 'reg_topic_', lang = 'en') {
@@ -954,7 +963,7 @@ bot.on('message', async (msg) => {
     if (state.step === 'awaiting_mentor_edu') {
       state.tempData.educational_background = text.trim();
       setState(chatId, 'awaiting_mentor_about', null, state.tempData);
-      return safeSend(chatId, await t(chatId, 'apply_q3'));
+      return showCancelKeyboard(chatId, await t(chatId, 'apply_q3'));
     }
     if (state.step === 'awaiting_mentor_about') {
       const about = text.trim();
@@ -1094,6 +1103,13 @@ bot.on('callback_query', async (query) => {
   // Noop
   if (data === 'noop') { return bot.answerCallbackQuery(query.id); }
 
+  if (data === 'cancel_operation') {
+    clearState(chatId);
+    await safeSend(chatId, tSync(lang, 'operation_cancelled'));
+    await showMainMenu(chatId);
+    return bot.answerCallbackQuery(query.id);
+  }
+
   // Registration
   if (data.startsWith('reg_sex_')) {
     setState(chatId, 'reg_age', null, { sex: data.replace('reg_sex_', '') });
@@ -1232,7 +1248,7 @@ bot.on('callback_query', async (query) => {
   } else if (data.startsWith('admin_reject_')) {
     const targetId = data.replace('admin_reject_', '');
     setState(chatId, 'admin_reject_note', null, { targetId });
-    await safeSend(chatId, 'Enter rejection note (or send "none"):');
+    await showCancelKeyboard(chatId, 'Enter rejection note (or send "none"):');
   }
 
   // Navigation
@@ -1249,7 +1265,7 @@ bot.on('callback_query', async (query) => {
       }
     });
   }
-  else if (data === 'journal_new') { setState(chatId, 'journal_new'); await safeSend(chatId, tSync(lang, 'journal_write_prompt')); }
+  else if (data === 'journal_new') { setState(chatId, 'journal_new'); await showCancelKeyboard(chatId, tSync(lang, 'journal_write_prompt')); }
   else if (data.startsWith('journal_view_')) await viewJournalEntries(chatId, parseInt(data.replace('journal_view_', '')));
   else if (data.startsWith('journal_read_')) await readJournalEntry(chatId, data.replace('journal_read_', ''));
   else if (data === 'menu_verse') await handleDailyVerse(chatId);
@@ -1272,7 +1288,7 @@ bot.on('callback_query', async (query) => {
     if (!state) return;
     state.tempData.sex = sex;
     setState(chatId, 'awaiting_mentor_edu', null, state.tempData);
-    await safeSend(chatId, tSync(lang, 'apply_q2'));
+    await showCancelKeyboard(chatId, tSync(lang, 'apply_q2'));
     return bot.answerCallbackQuery(query.id);
   }
   else if (data === 'topic_done') {
@@ -1312,7 +1328,7 @@ bot.on('callback_query', async (query) => {
   }
 
   else if (data.startsWith('settings_toggle_')) await toggleSetting(chatId, data.replace('settings_toggle_', ''));
-  else if (data === 'settings_time') { setState(chatId, 'set_verse_time'); await safeSend(chatId, tSync(lang, 'enter_verse_hour')); }
+  else if (data === 'settings_time') { setState(chatId, 'set_verse_time'); await showCancelKeyboard(chatId, tSync(lang, 'enter_verse_hour')); }
   else if (data === 'settings_lang') {
     await bot.editMessageText(tSync(lang, 'choose_language'), {
       chat_id: chatId, message_id: query.message.message_id,
@@ -1412,7 +1428,7 @@ bot.on('callback_query', async (query) => {
   else if (data === 'time_custom') {
     if (!state) return;
     setState(chatId, 'sched_custom_time', null, state.tempData);
-    await safeSend(chatId, tSync(lang, 'enter_custom_time'));
+    await showCancelKeyboard(chatId, tSync(lang, 'enter_custom_time'));
   }
 
   // Mentees
