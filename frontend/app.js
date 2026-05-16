@@ -219,6 +219,7 @@ function navigate(page) {
     case 'requests': loadRequests(); break;
     case 'settings': loadSettings(); break;
     case 'my-mentees': loadMyMentees(); break;
+    case 'journal': loadJournalEntries(); break;
   }
 }
 
@@ -334,10 +335,45 @@ async function loadDashboard() {
   } catch {}
 
   loadActivityChart();
+  loadStreak();
 
   if (String(currentUser?.telegram_id) === String(window.ADMIN_ID)) {
     $('adminBtn')?.classList.remove('hidden');
   }
+}
+
+// ─── Streaks ──────────────────────────────────────────────────
+async function loadStreak() {
+  try {
+    const s = await apiFetch('/api/streaks');
+    $('streakCount').textContent = t('streak_display', { count: s.current_streak });
+    
+    // Check if already read today (Ethiopia time)
+    const etNow = new Date(new Date().getTime() + (3 * 60 * 60 * 1000));
+    const today = etNow.toISOString().split('T')[0];
+    
+    const btn = $('markReadBtn');
+    if (s.last_read_date === today) {
+      btn.textContent = t('streak_already_read');
+      btn.disabled = true;
+      $('streakCard').style.opacity = '0.7';
+    } else {
+      btn.textContent = t('btn_mark_read');
+      btn.disabled = false;
+      $('streakCard').style.opacity = '1';
+    }
+  } catch (e) { console.error('Streak error:', e); }
+}
+
+async function markStreakRead() {
+  if ($('markReadBtn').disabled) return;
+  haptic('medium');
+  try {
+    const s = await apiFetch('/api/streaks/mark', { method: 'POST' });
+    haptic('success');
+    showToast(t('streak_marked'), 'success');
+    loadStreak();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function loadActivityChart() {
@@ -409,10 +445,10 @@ async function loadMentors() {
           </div>
           <div class="mentor-meta">
             ${spec ? `<span class="mentor-badge badge-spec">${escapeHtml(spec)}</span>` : ''}
-            <span class="mentor-badge badge-mentees">${mentees}/${max} mentees</span>
+            <span class="mentor-badge badge-mentees">${mentees}/${max} ${t('role_mentee')}s</span>
           </div>
           <button class="btn btn-outline btn-sm" onclick="requestMentorship(${m.telegram_id})" ${mentees >= max ? 'disabled' : ''}>
-            ${mentees >= max ? 'Full' : 'Request Mentorship'}
+            ${mentees >= max ? t('none') : t('btn_request')}
           </button>
         </div>`;
     }).join('');
@@ -454,8 +490,8 @@ async function loadRequests() {
             <div class="mentor-bio" style="margin-top:4px">${escapeHtml(r.message)}</div>
           </div>
           <div class="flex gap-8 mt-12">
-            <button class="btn btn-primary btn-sm flex-1" onclick="respondToRequest('${r.id}', 'accepted')">Accept</button>
-            <button class="btn btn-outline btn-sm flex-1" onclick="respondToRequest('${r.id}', 'rejected')">Reject</button>
+            <button class="btn btn-primary btn-sm flex-1" onclick="respondToRequest('${r.id}', 'accepted')">${t('btn_accept')}</button>
+            <button class="btn btn-outline btn-sm flex-1" onclick="respondToRequest('${r.id}', 'rejected')">${t('btn_reject')}</button>
           </div>
         </div>`;
     }).join('');
@@ -501,7 +537,7 @@ async function loadSessions() {
               <div class="session-title">${escapeHtml(title)}</div>
               <div class="session-sub">${scheduled} • ${session.status}</div>
             </div>
-            ${session.status === 'scheduled' ? `<button class="btn btn-primary btn-sm" onclick="joinSession('${session.id}')">Join</button>` : '<span class="chip chip-green">Completed</span>'}
+            ${session.status === 'scheduled' ? `<button class="btn btn-primary btn-sm" onclick="joinSession('${session.id}')">${t('btn_join_session')}</button>` : `<span class="chip chip-green">${t('btn_done')}</span>`}
           </div>`;
       }).join('');
     }
@@ -961,90 +997,21 @@ async function submitTicket() {
 }
 
 // ─── Localization ─────────────────────────────────────────────
-const I18N = {
-  en: {
-    'Home': 'Home',
-    'Mentors': 'Mentors',
-    'Sessions': 'Sessions',
-    'Chat': 'Chat',
-    'Requests': 'Requests',
-    'Settings': 'Settings',
-    'My Mentees': 'My Mentees',
-    'Active Clients': 'Active Clients',
-    'Language': 'Language',
-    'Identity': 'Identity',
-    'Display': 'Display',
-    'Notifications': 'Notifications',
-    'Save': 'Save',
-    'Join the Community 🙏': 'Join the Community 🙏',
-    'Anonymous ID': 'Anonymous ID',
-    'Role': 'Role',
-    'Display Name (still anonymous)': 'Display Name (still anonymous)',
-    'Timezone': 'Timezone',
-    'Theme': 'Theme',
-    'Toggle Dark/Light': 'Toggle Dark/Light',
-    'New Messages': 'New Messages',
-    'Session Reminders': 'Session Reminders',
-    'Daily Bible Verse': 'Daily Bible Verse',
-    'Mentor Profile': 'Mentor Profile',
-    'Bio': 'Bio',
-    'Specialization': 'Specialization',
-    'Max Mentees': 'Max Mentees',
-    'No active mentees yet': 'No active mentees yet',
-    'Joined': 'Joined',
-    'Sessions:': 'Sessions:',
-    'End': 'End',
-    'Message': 'Message',
-    'Schedule': 'Schedule',
-    'Private note about this mentee...': 'Private note about this mentee...',
-    'Pending mentorship applications from users.': 'Pending mentorship applications from users.',
-  },
-  am: {
-    'Home': 'መነሻ',
-    'Mentors': 'አማካሪዎች',
-    'Sessions': 'ክፍለ-ጊዜዎች',
-    'Chat': 'ውይይት',
-    'Requests': 'ጥያቄዎች',
-    'Settings': 'ቅንብሮች',
-    'My Mentees': 'የእኔ ተማሪዎች',
-    'Active Clients': 'ንቁ ተማሪዎች',
-    'Language': 'ቋንቋ',
-    'Identity': 'ማንነት',
-    'Display': 'እይታ',
-    'Notifications': 'ማሳወቂያዎች',
-    'Save': 'አስቀምጥ',
-    'Join the Community 🙏': 'ማህበረሰቡን ይቀላቀሉ 🙏',
-    'Anonymous ID': 'ስም-አልባ መታወቂያ',
-    'Role': 'ሚና',
-    'Display Name (still anonymous)': 'የማሳያ ስም',
-    'Timezone': 'የሰዓት ቀጠና',
-    'Theme': 'ገጽታ',
-    'Toggle Dark/Light': 'ቀን/ማታ ቀይር',
-    'New Messages': 'አዲስ መልዕክቶች',
-    'Session Reminders': 'የክፍለ-ጊዜ ማሳሰቢያዎች',
-    'Daily Bible Verse': 'ዕለታዊ የመጽሐፍ ቅዱስ ጥቅስ',
-    'Mentor Profile': 'የአማካሪ መገለጫ',
-    'Bio': 'ስለ እኔ',
-    'Specialization': 'ልዩ ችሎታ',
-    'Max Mentees': 'ከፍተኛ የተማሪዎች ብዛት',
-    'No active mentees yet': 'እስካሁን ምንም ንቁ ተማሪዎች የሉም',
-    'Joined': 'የተቀላቀሉበት',
-    'Sessions:': 'ክፍለ-ጊዜዎች:',
-    'End': 'አቁም',
-    'Message': 'መልዕክት',
-    'Schedule': 'ቀጠሮ',
-    'Private note about this mentee...': 'ስለ ተማሪው የግል ማስታወሻ...',
-    'Pending mentorship applications from users.': 'ከተጠቃሚዎች የቀረቡ የአማካሪነት ጥያቄዎች።',
-  }
-};
-
 let currentLanguage = localStorage.getItem('language') || 'en';
 
-function applyLanguage() {
+function t(key, replacements = {}) {
   const dict = I18N[currentLanguage] || I18N.en;
+  let str = dict[key] || key;
+  for (const [k, v] of Object.entries(replacements)) {
+    str = str.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+  }
+  return str;
+}
+
+function applyLanguage() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
-    const translated = dict[key] || key;
+    const translated = t(key);
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       el.placeholder = translated;
     } else {
@@ -1087,17 +1054,17 @@ async function loadMyMentees() {
           <div class="flex justify-between items-start mb-8">
             <div>
               <div class="font-bold" style="color:var(--gold)">${escapeHtml(user.anonymous_id)}</div>
-              <div class="text-xs text-dim">Joined ${new Date(assigned_at).toLocaleDateString()}</div>
-              <div class="text-xs text-dim">Sessions: ${sessionCount}</div>
+              <div class="text-xs text-dim">${t('Joined')} ${new Date(assigned_at).toLocaleDateString()}</div>
+              <div class="text-xs text-dim">${t('Sessions:')} ${sessionCount}</div>
             </div>
-            <button class="btn btn-ghost btn-sm" onclick="endMentorship('${assignId}')">End</button>
+            <button class="btn btn-ghost btn-sm" onclick="endMentorship('${assignId}')">${t('btn_end')}</button>
           </div>
           <div class="flex gap-8 mb-8">
-            <button class="btn btn-outline btn-sm flex-1" onclick="openChat('${user.telegram_id}', '${escapeHtml(user.anonymous_id)}')">Message</button>
-            <button class="btn btn-outline btn-sm flex-1" onclick="createSession(false, '${user.telegram_id}')">Session</button>
+            <button class="btn btn-outline btn-sm flex-1" onclick="openChat('${user.telegram_id}')">${t('btn_message')}</button>
+            <button class="btn btn-outline btn-sm flex-1" onclick="createSession(false, '${user.telegram_id}')">${t('btn_session')}</button>
           </div>
           <div class="form-group mb-0">
-            <textarea id="note-${user.telegram_id}" class="form-control text-sm" placeholder="Private note about this mentee..." rows="2" onblur="saveMentorNote('${user.telegram_id}')"></textarea>
+            <textarea id="note-${user.telegram_id}" class="form-control text-sm" data-i18n="Private note about this mentee..." placeholder="${t('Private note about this mentee...')}" rows="2" onblur="saveMentorNote('${user.telegram_id}')"></textarea>
           </div>
         </div>`;
     }
@@ -1124,9 +1091,115 @@ async function endMentorship(assignId) {
   try {
     await apiFetch(`/api/mentors/end-mentorship/${assignId}`, { method: 'DELETE' });
     haptic('success');
-    showToast('Mentorship ended', 'success');
+    showToast(t('mentorship_ended'), 'success');
     loadMyMentees();
   } catch (e) { haptic('error'); showToast(e.message, 'error'); }
+}
+
+// ─── Topics ───────────────────────────────────────────────────
+window.selectedTopics = [];
+
+async function openTopicModal() {
+  haptic('light');
+  const container = $('topicsList');
+  container.innerHTML = '<div class="loading-spinner" style="margin:20px auto"></div>';
+  $('topicModal').classList.add('open');
+  
+  try {
+    const [all, mine] = await Promise.all([
+      apiFetch('/api/topics'),
+      apiFetch('/api/topics/my')
+    ]);
+    window.selectedTopics = mine.map(t => t.topic_id);
+    
+    container.innerHTML = all.map(t => `
+      <div id="topic-${t.id}" class="chip ${window.selectedTopics.includes(t.id) ? 'chip-gold' : 'chip-outline'}" onclick="toggleTopic(${t.id})">
+        ${escapeHtml(t.name)}
+      </div>
+    `).join('');
+  } catch (e) { container.innerHTML = `<p class="text-danger">${e.message}</p>`; }
+}
+
+function toggleTopic(id) {
+  haptic('light');
+  const idx = window.selectedTopics.indexOf(id);
+  if (idx > -1) {
+    window.selectedTopics.splice(idx, 1);
+    $(`topic-${id}`).className = 'chip chip-outline';
+  } else {
+    window.selectedTopics.push(id);
+    $(`topic-${id}`).className = 'chip chip-gold';
+  }
+}
+
+function closeTopicModal() {
+  haptic('light');
+  $('topicModal').classList.remove('open');
+}
+
+async function saveTopics() {
+  haptic('medium');
+  try {
+    await apiFetch('/api/topics/my', { method: 'POST', body: { topic_ids: window.selectedTopics } });
+    haptic('success');
+    showToast(t('topics_updated'), 'success');
+    closeTopicModal();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ─── Journal ──────────────────────────────────────────────────
+async function loadJournalEntries() {
+  const container = $('journalEntriesList');
+  container.innerHTML = '<div class="loading-spinner" style="margin:40px auto"></div>';
+  try {
+    const entries = await apiFetch('/api/journal');
+    if (!entries.length) {
+      container.innerHTML = `<div class="empty-state"><span>${t('journal_empty')}</span></div>`;
+      return;
+    }
+    container.innerHTML = entries.map(e => `
+      <div class="journal-item" onclick="openJournalEntry('${e.id}', \`${escapeHtml(e.content)}\`)">
+        <div class="journal-date">${formatDateTime(e.created_at)}</div>
+        <div class="journal-preview">${escapeHtml(e.content)}</div>
+      </div>
+    `).join('');
+  } catch (e) { container.innerHTML = `<div class="empty-state"><span>${e.message}</span></div>`; }
+}
+
+function showNewJournalEntry() {
+  haptic('light');
+  $('journalModalTitle').textContent = t('btn_new_entry');
+  $('journalContent').value = '';
+  $('journalContent').readOnly = false;
+  $('saveJournalBtn').style.display = 'block';
+  $('journalModal').classList.add('open');
+}
+
+function openJournalEntry(id, content) {
+  haptic('light');
+  $('journalModalTitle').textContent = t('journal_title');
+  $('journalContent').value = content;
+  $('journalContent').readOnly = true;
+  $('saveJournalBtn').style.display = 'none';
+  $('journalModal').classList.add('open');
+}
+
+function closeJournalModal() {
+  haptic('light');
+  $('journalModal').classList.remove('open');
+}
+
+async function saveJournalEntry() {
+  const content = $('journalContent').value.trim();
+  if (!content) return;
+  haptic('medium');
+  try {
+    await apiFetch('/api/journal', { method: 'POST', body: { content } });
+    haptic('success');
+    showToast(t('journal_saved'), 'success');
+    closeJournalModal();
+    loadJournalEntries();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ─── Boot ─────────────────────────────────────────────────────
