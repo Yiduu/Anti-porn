@@ -69,8 +69,8 @@
   <!-- Step 0: Welcome -->
   <div class="onboarding-step">
     <div class="verse-card" style="margin-bottom:24px">
-      <div class="verse-text">"Therefore, if anyone is in Christ, the new creation has come: The old has gone, the new is here!"</div>
-      <div class="verse-ref">2 Corinthians 5:17</div>
+      <div id="verseTextOnboarding" class="verse-text">"Therefore, if anyone is in Christ, the new creation has come: The old has gone, the new is here!"</div>
+      <div id="verseRefOnboarding" class="verse-ref">2 Corinthians 5:17</div>
     </div>
     <p style="color:var(--text2);font-size:.9rem;line-height:1.6;margin-bottom:24px">
       This community is 100% anonymous. No real names, emails, or phone numbers are collected.
@@ -282,7 +282,7 @@
   <div id="page-chat" class="page" style="padding-bottom:0">
     <div class="app-header">
       <h2 id="chatWith">Messages</h2>
-      <select id="chatPartnerSelect" class="form-control btn-sm" style="width:auto;display:none" onchange="switchChatPartner(this.value)"></select>
+      <select id="chatPartnerSelect" class="form-control btn-sm" style="width:auto;display:none;background:var(--bg3)" onchange="switchChatPartner(this.value)"></select>
     </div>
     <div id="chatMessages" class="chat-messages"></div>
     <div id="typingIndicator" class="typing-indicator"></div>
