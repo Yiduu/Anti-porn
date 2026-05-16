@@ -178,7 +178,21 @@
       </div>
 
       <!-- Stats -->
-      <div class="section-title">Community</div>
+      <div class="section-title" data-i18n="My Progress">My Progress</div>
+      <div id="streakCard" class="card mb-16 streak-card" onclick="markStreakRead()">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-12">
+            <div class="streak-icon">🔥</div>
+            <div>
+              <div class="text-sm font-bold" data-i18n="Bible Streak">Bible Streak</div>
+              <div id="streakCount" class="text-xs text-dim">0 days</div>
+            </div>
+          </div>
+          <button id="markReadBtn" class="btn btn-ghost btn-sm" data-i18n="btn_mark_read">Mark Read</button>
+        </div>
+      </div>
+
+      <div class="section-title" data-i18n="Community">Community</div>
       <div class="stats-grid mb-16">
         <div class="stat-card"><div id="statUsers" class="stat-num">–</div><div class="stat-label">Members</div></div>
         <div class="stat-card"><div id="statMentors" class="stat-num">–</div><div class="stat-label">Mentors</div></div>
@@ -326,6 +340,19 @@
   </div>
 
 
+  <!-- ── Page: Journal ─────────────────────────────────────────── -->
+  <div id="page-journal" class="page">
+    <div class="app-header">
+      <h2 data-i18n="btn_journal">Journal</h2>
+      <button class="btn btn-sm btn-primary" onclick="showNewJournalEntry()" data-i18n="btn_new_entry">+ New</button>
+    </div>
+    <div class="page-content">
+      <div id="journalEntriesList" style="display:flex;flex-direction:column;gap:10px">
+        <div class="loading-spinner" style="margin:40px auto"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Page: Settings ────────────────────────────────────────── -->
   <div id="page-settings" class="page">
     <div class="app-header">
@@ -384,6 +411,8 @@
           <span class="text-sm text-dim" data-i18n="Theme">Theme</span>
           <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" data-i18n="Toggle Dark/Light">Toggle Dark/Light</button>
         </div>
+        <div class="divider"></div>
+        <button class="btn btn-outline btn-sm btn-full" onclick="openTopicModal()" data-i18n="settings_my_topics">My Topics</button>
       </div>
 
       <!-- Notifications -->
@@ -436,6 +465,10 @@
       <span id="chatBadge" class="nav-badge" style="display:none">0</span>
       <span data-i18n="Chat">Chat</span>
     </div>
+    <div id="nav-journal" class="nav-item" onclick="navigate('journal')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <span data-i18n="Journal">Journal</span>
+    </div>
     <div id="nav-my-mentees" class="nav-item" onclick="navigate('my-mentees')" style="display:none">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       <span data-i18n="Mentees">Mentees</span>
@@ -486,6 +519,34 @@
   </div>
 </div>
 
+<!-- ─── Journal Entry Modal ────────────────────────────────────── -->
+<div id="journalModal" class="modal-overlay" onclick="if(event.target===this)closeJournalModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="journalModalTitle" class="modal-title" data-i18n="btn_new_entry">New Entry</div>
+    <div class="form-group">
+      <textarea id="journalContent" class="form-control" rows="8" data-i18n="journal_write_prompt" placeholder="Write your thoughts here..."></textarea>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-ghost flex-1" onclick="closeJournalModal()" data-i18n="btn_cancel">Cancel</button>
+      <button id="saveJournalBtn" class="btn btn-primary flex-1" onclick="saveJournalEntry()" data-i18n="btn_done">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Topic Selection Modal ────────────────────────────────── -->
+<div id="topicModal" class="modal-overlay" onclick="if(event.target===this)closeTopicModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" data-i18n="select_your_topics">Select Topics</div>
+    <div id="topicsList" class="flex flex-wrap gap-8 py-16" style="max-height:50vh;overflow-y:auto">
+      <!-- Dynamic topics -->
+    </div>
+    <button class="btn btn-primary btn-full mt-16" onclick="saveTopics()" data-i18n="Save">Save Topics</button>
+  </div>
+</div>
+
+<script src="locales.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
