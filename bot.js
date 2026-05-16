@@ -175,6 +175,16 @@ async function showCancelKeyboard(chatId, promptText) {
   });
 }
 
+async function showTextInputWithCancel(chatId, promptText, nextState, tempData = {}) {
+  setState(chatId, nextState, null, tempData);
+  const lang = await getUserLang(chatId);
+  return safeSend(chatId, promptText, {
+    reply_markup: {
+      inline_keyboard: [[{ text: tSync(lang, 'btn_cancel'), callback_data: 'cancel_application' }]]
+    }
+  });
+}
+
 // ─── Topic Picker ─────────────────────────────────────────────────────────────
 
 async function getTopicPickerKeyboard(selectedIds = [], actionPrefix = 'reg_topic_', lang = 'en') {
@@ -962,8 +972,7 @@ bot.on('message', async (msg) => {
 
     if (state.step === 'awaiting_mentor_edu') {
       state.tempData.educational_background = text.trim();
-      setState(chatId, 'awaiting_mentor_about', null, state.tempData);
-      return showCancelKeyboard(chatId, await t(chatId, 'apply_q3'));
+      return showTextInputWithCancel(chatId, await t(chatId, 'apply_q3'), 'awaiting_mentor_about', state.tempData);
     }
     if (state.step === 'awaiting_mentor_about') {
       const about = text.trim();
@@ -1106,6 +1115,13 @@ bot.on('callback_query', async (query) => {
   if (data === 'cancel_operation') {
     clearState(chatId);
     await safeSend(chatId, tSync(lang, 'operation_cancelled'));
+    await showMainMenu(chatId);
+    return bot.answerCallbackQuery(query.id);
+  }
+
+  if (data === 'cancel_application') {
+    clearState(chatId);
+    await safeSend(chatId, tSync(lang, 'application_cancelled'));
     await showMainMenu(chatId);
     return bot.answerCallbackQuery(query.id);
   }
@@ -1287,8 +1303,7 @@ bot.on('callback_query', async (query) => {
     const sex = data.replace('mentor_sex_', '');
     if (!state) return;
     state.tempData.sex = sex;
-    setState(chatId, 'awaiting_mentor_edu', null, state.tempData);
-    await showCancelKeyboard(chatId, tSync(lang, 'apply_q2'));
+    await showTextInputWithCancel(chatId, tSync(lang, 'apply_q2'), 'awaiting_mentor_edu', state.tempData);
     return bot.answerCallbackQuery(query.id);
   }
   else if (data === 'topic_done') {
