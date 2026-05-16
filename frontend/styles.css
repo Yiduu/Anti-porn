@@ -207,7 +207,13 @@ h3 { font-size: 1rem; }
 
 .btn-sm { padding: 7px 14px; font-size: 0.8rem; }
 .btn-full { width: 100%; }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.5); }
+.btn.loading { position: relative; color: transparent !important; pointer-events: none; }
+.btn.loading::after {
+  content: ''; position: absolute; width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
 
 /* ─── Forms ─────────────────────────────────────────────────── */
 .form-group { margin-bottom: 14px; }
@@ -317,6 +323,13 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   display: flex; gap: 8px; padding: 10px 16px;
   border-top: 1px solid var(--border-dim);
   background: var(--bg2);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  transform: translateY(0);
+}
+.chat-input-row.hidden {
+  display: none !important;
+  transform: translateY(20px);
+  opacity: 0;
 }
 .chat-input {
   flex: 1; background: var(--bg3); border: 1px solid var(--border-dim);
@@ -488,7 +501,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .flex-1 { flex: 1; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .divider { height: 1px; background: var(--border-dim); margin: 16px 0; }
-.chat-input-row, #chatInputRow { display: flex; visibility: visible; }
+.chat-input-row, #chatInputRow { visibility: visible; }
 .hidden { display: none !important; }
 
 /* ─── Responsive ────────────────────────────────────────────── */
