@@ -733,8 +733,18 @@ async function showSettings(chatId) {
 }
 
 async function toggleSetting(chatId, field) {
-  const { data: s } = await supabase.from('user_settings').select(field).eq('telegram_id', chatId).single();
-  await supabase.from('user_settings').update({ [field]: !s[field] }).eq('telegram_id', chatId);
+  const { data: s } = await supabase.from('user_settings').select('*').eq('telegram_id', chatId).single();
+  
+  // Default to true if settings are missing
+  const currentValue = s ? s[field] : true;
+  const newValue = !currentValue;
+
+  if (!s) {
+    const lang = await getUserLang(chatId);
+    await supabase.from('user_settings').insert({ telegram_id: chatId, language: lang, [field]: newValue });
+  } else {
+    await supabase.from('user_settings').update({ [field]: newValue }).eq('telegram_id', chatId);
+  }
   await showSettings(chatId);
 }
 
