@@ -951,21 +951,18 @@ bot.on('message', async (msg) => {
       return;
     }
 
-    if (state.step === 'awaiting_mentor_q1') {
-      state.tempData.q1 = text.trim();
-      setState(chatId, 'awaiting_mentor_q2', null, state.tempData);
-      return safeSend(chatId, await t(chatId, 'apply_q2'));
-    }
-    if (state.step === 'awaiting_mentor_q2') {
-      state.tempData.q2 = text.trim();
-      setState(chatId, 'awaiting_mentor_q3', null, state.tempData);
+    if (state.step === 'awaiting_mentor_edu') {
+      state.tempData.educational_background = text.trim();
+      setState(chatId, 'awaiting_mentor_about', null, state.tempData);
       return safeSend(chatId, await t(chatId, 'apply_q3'));
     }
-    if (state.step === 'awaiting_mentor_q3') {
-      const q3 = text === '/skip' ? null : text.trim();
+    if (state.step === 'awaiting_mentor_about') {
+      const about = text.trim();
       const { error } = await supabase.from('mentor_applications').insert({
-        telegram_id: chatId, answer_q1: state.tempData.q1,
-        answer_q2: state.tempData.q2, answer_q3: q3,
+        telegram_id: chatId, 
+        sex: state.tempData.sex,
+        educational_background: state.tempData.educational_background,
+        about_me: about,
         status: 'pending', submitted_at: new Date().toISOString()
       });
       if (error) await safeSend(chatId, await t(chatId, 'application_error'));
@@ -974,7 +971,7 @@ bot.on('message', async (msg) => {
         const adminIds = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_CHAT_ID;
         if (adminIds) {
           const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', chatId).single();
-          const adminMsg = `🆕 *New Mentor Application*\n\nUser: *${u?.anonymous_id || chatId}*\n\n*Q1:* ${state.tempData.q1}\n*Q2:* ${state.tempData.q2}\n*Q3:* ${q3 || '_None_'}`;
+          const adminMsg = `🆕 *New Mentor Application*\n\nUser: *${u?.anonymous_id || chatId}*\n\n*Sex:* ${state.tempData.sex}\n*Education:* ${state.tempData.educational_background}\n*About:* ${about}`;
           for (const id of adminIds.split(',')) {
             if (id.trim()) await safeSend(id.trim(), adminMsg, {
               reply_markup: {
@@ -1270,6 +1267,14 @@ bot.on('callback_query', async (query) => {
     await bot.editMessageReplyMarkup(kb, { chat_id: chatId, message_id: query.message.message_id });
     return bot.answerCallbackQuery(query.id);
   }
+  else if (data.startsWith('mentor_sex_')) {
+    const sex = data.replace('mentor_sex_', '');
+    if (!state) return;
+    state.tempData.sex = sex;
+    setState(chatId, 'awaiting_mentor_edu', null, state.tempData);
+    await safeSend(chatId, tSync(lang, 'apply_q2'));
+    return bot.answerCallbackQuery(query.id);
+  }
   else if (data === 'topic_done') {
     await safeSend(chatId, tSync(lang, 'expertise_updated'));
     await showMainMenu(chatId);
@@ -1434,8 +1439,15 @@ bot.on('callback_query', async (query) => {
       return bot.answerCallbackQuery(query.id, { text: tSync(lang, 'already_mentor'), show_alert: true });
     const { data: ex } = await supabase.from('mentor_applications').select('id').eq('telegram_id', chatId).eq('status', 'pending').single();
     if (ex) return bot.answerCallbackQuery(query.id, { text: tSync(lang, 'application_pending'), show_alert: true });
-    setState(chatId, 'awaiting_mentor_q1');
-    await safeSend(chatId, tSync(lang, 'apply_q1'));
+    setState(chatId, 'awaiting_mentor_sex');
+    await safeSend(chatId, tSync(lang, 'apply_q1'), {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'sex_male'), callback_data: 'mentor_sex_M' }, { text: tSync(lang, 'sex_female'), callback_data: 'mentor_sex_F' }],
+          [{ text: tSync(lang, 'sex_prefer_not'), callback_data: 'mentor_sex_prefer_not' }]
+        ]
+      }
+    });
   }
 
   else if (data === 'menu_help') {
