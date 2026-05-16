@@ -70,6 +70,13 @@ function tSync(lang, key, replacements = {}) {
   return str;
 }
 
+// Escape characters that break Telegram Markdown (parse_mode: 'Markdown')
+// Only *, _, ` need escaping in legacy Markdown mode
+function mdEscape(str) {
+  if (!str) return '';
+  return String(str).replace(/([*_`])/g, '\\$1');
+}
+
 // ─── State Management ─────────────────────────────────────────────────────────
 
 const userStates = new Map(); // telegram_id -> { step, targetId, expires, tempData }
@@ -143,7 +150,7 @@ async function showPersistentMenu(chatId, customText) {
     getUserLang(chatId)
   ]);
   const role = user?.role || 'user';
-  const menuText = customText || tSync(lang, 'menu_welcome', { nick: user?.anonymous_id || '' });
+  const menuText = customText || tSync(lang, 'menu_welcome', { nick: mdEscape(user?.anonymous_id || '') });
 
   const kb = [
     [tSync(lang, 'btn_find_mentor'), tSync(lang, 'btn_my_chat')],
@@ -455,8 +462,8 @@ async function listMentors(chatId, page = 0, topicId, sort = 'rating') {
 
   for (const m of paginated) {
     const badge = onlineBadge(m.last_activity);
-    const displayName = m.public_alias || m.user_settings?.display_name || m.anonymous_id;
-    const bio = m.user_settings?.bio || tSync(lang, 'no_bio');
+    const displayName = mdEscape(m.public_alias || m.user_settings?.display_name || m.anonymous_id);
+    const bio = mdEscape(m.user_settings?.bio || tSync(lang, 'no_bio'));
     const stars = renderStars(m.rating, m.rating_count);
     const status = isOnline(m.last_activity) ? tSync(lang, 'status_online') : tSync(lang, 'status_away');
     const slots = (m.max_mentees || DEFAULT_MAX_MENTEES) - (menteeCount[m.telegram_id] || 0);
@@ -534,7 +541,7 @@ async function forwardMessage(fromId, toId, text) {
   const lang = await getUserLang(toId);
   if (recipient?.chat_id) {
     const roleLabel = sender?.role === 'mentor' ? tSync(lang, 'role_mentor') : tSync(lang, 'role_mentee');
-    await safeSend(recipient.chat_id, tSync(lang, 'msg_from_partner', { role: roleLabel, nick: sender?.anonymous_id, text }));
+    await safeSend(recipient.chat_id, tSync(lang, 'msg_from_partner', { role: roleLabel, nick: mdEscape(sender?.anonymous_id), text: mdEscape(text) }));
     setState(toId, 'chat_active', fromId);
   }
 }
@@ -546,7 +553,7 @@ async function promptRating(userId, mentorId) {
   const { data: mentor } = await supabase.from('users').select('anonymous_id, public_alias').eq('telegram_id', mentorId).single();
   const displayName = mentor?.public_alias || mentor?.anonymous_id;
   setState(userId, 'rating_pending', mentorId, { mentorId });
-  await safeSend(userId, tSync(lang, 'rate_mentor_prompt', { name: displayName }), {
+  await safeSend(userId, tSync(lang, 'rate_mentor_prompt', { name: mdEscape(displayName) }), {
     reply_markup: {
       inline_keyboard: [
         [1, 2, 3, 4, 5].map(n => ({ text: '⭐'.repeat(n), callback_data: `rate_${mentorId}_${n}` }))
@@ -614,10 +621,10 @@ async function handleDailyVerse(chatId) {
   const v = vs?.[Math.floor(Date.now() / 86400000) % (vs.length || 1)];
   if (!v) return safeSend(chatId, tSync(lang, 'no_verse'));
 
-  let text = `📖 *${tSync(lang, 'verse_title')}*\n*${v.reference}*\n\n${v.text}`;
+  let text = `📖 *${tSync(lang, 'verse_title')}*\n*${mdEscape(v.reference)}*\n\n${mdEscape(v.text)}`;
   if (lang === 'am') {
     const amVerse = await getAmharicVerse(v.text);
-    if (amVerse) text += `\n\n🇪🇹 *${tSync('am', 'amharic_translation')}:*\n_${amVerse}_`;
+    if (amVerse) text += `\n\n🇪🇹 *${tSync('am', 'amharic_translation')}:*\n_${mdEscape(amVerse)}_`;
   }
   await safeSend(chatId, text);
 }
@@ -649,8 +656,8 @@ async function handleStreakFlow(chatId) {
   const text = tSync(lang, 'streak_display', {
     count: s?.current_streak || 0,
     longest: s?.longest_streak || 0,
-    reference: v.reference,
-    verse: v.text
+    reference: mdEscape(v.reference),
+    verse: mdEscape(v.text)
   });
 
   const kb = { inline_keyboard: [] };
@@ -945,7 +952,7 @@ bot.on('message', async (msg) => {
         if (!content) {
           setState(chatId, 'chat_active', targetId);
           const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', targetId).single();
-          return safeSend(chatId, await t(chatId, 'focus_set', { nick: u.anonymous_id }));
+          return safeSend(chatId, await t(chatId, 'focus_set', { nick: mdEscape(u.anonymous_id) }));
         }
         await forwardMessage(chatId, targetId, content);
         return safeSend(chatId, await t(chatId, 'msg_sent'));
@@ -997,7 +1004,7 @@ bot.on('message', async (msg) => {
     const buttons = [];
     for (const m of mentees) {
       const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', m.user_id).single();
-      textStr += `👤 @${u?.anonymous_id || m.user_id} (${m.topics?.name || '?'})\n`;
+      textStr += `👤 @${mdEscape(u?.anonymous_id || String(m.user_id))} (${mdEscape(m.topics?.name || '?')})\n`;
       buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${u?.anonymous_id || m.user_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
     }
     return safeSend(chatId, textStr, { reply_markup: { inline_keyboard: buttons } });
@@ -1080,7 +1087,7 @@ bot.on('message', async (msg) => {
         const adminIds = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_CHAT_ID;
         if (adminIds) {
           const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', chatId).single();
-          const adminMsg = `🆕 *New Mentor Application*\n\nUser: *${u?.anonymous_id || chatId}*\n\n*Sex:* ${state.tempData.sex}\n*Education:* ${state.tempData.educational_background}\n*About:* ${about}`;
+          const adminMsg = `🆕 *New Mentor Application*\n\nUser: *${mdEscape(u?.anonymous_id || String(chatId))}*\n\n*Sex:* ${mdEscape(state.tempData.sex)}\n*Education:* ${mdEscape(state.tempData.educational_background)}\n*About:* ${mdEscape(about)}`;
           for (const id of adminIds.split(',')) {
             if (id.trim()) await safeSend(id.trim(), adminMsg, {
               reply_markup: {
@@ -1129,7 +1136,7 @@ bot.on('message', async (msg) => {
         ]);
         const mentorLang = await getUserLang(mentorId);
         await safeSend(mentorId, tSync(mentorLang, 'new_mentorship_request', {
-          nick: u.anonymous_id, topic: topic.name, message: msgStr || tSync(mentorLang, 'none')
+          nick: mdEscape(u.anonymous_id), topic: mdEscape(topic.name), message: mdEscape(msgStr || tSync(mentorLang, 'none'))
         }), {
           reply_markup: {
             inline_keyboard: [[
@@ -1577,7 +1584,7 @@ bot.on('callback_query', async (query) => {
     const buttons = [];
     for (const m of mentees) {
       const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', m.user_id).single();
-      textStr += `👤 @${u?.anonymous_id || m.user_id} (${m.topics?.name || '?'})\n`;
+      textStr += `👤 @${mdEscape(u?.anonymous_id || String(m.user_id))} (${mdEscape(m.topics?.name || '?')})\n`;
       buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${u?.anonymous_id || m.user_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
     }
     await safeSend(chatId, textStr, { reply_markup: { inline_keyboard: buttons } });
@@ -1627,10 +1634,10 @@ setInterval(async () => {
   if (v && opted?.length) {
     for (const u of opted) {
       const lang = u.language || 'en';
-      let text = `📖 *${tSync(lang, 'verse_title')}*\n*${v.reference}*\n\n${v.text}`;
+      let text = `📖 *${tSync(lang, 'verse_title')}*\n*${mdEscape(v.reference)}*\n\n${mdEscape(v.text)}`;
       if (lang === 'am') {
         const amVerse = await getAmharicVerse(v.text);
-        if (amVerse) text += `\n\n🇪🇹 *${tSync('am', 'amharic_translation')}:*\n_${amVerse}_`;
+        if (amVerse) text += `\n\n🇪🇹 *${tSync('am', 'amharic_translation')}:*\n_${mdEscape(amVerse)}_`;
       }
       await safeSend(u.telegram_id, text);
     }
