@@ -2,7 +2,7 @@
 
 const express = require('express');
 
-const PROFANITY_LIST = ['fuck','shit','ass','bitch','damn','crap','bastard','hell','piss'];
+const PROFANITY_LIST = ['fuck', 'shit', 'ass', 'bitch', 'damn', 'crap', 'bastard', 'hell', 'piss'];
 
 function containsProfanity(text) {
   const lower = text.toLowerCase();
@@ -95,6 +95,20 @@ module.exports = function messageRoutes(supabase, requireAuth, io, onlineUsers) 
     }
 
     res.status(201).json(msg);
+  });
+
+  // DELETE /api/messages/:with – clear history
+  router.delete('/:with', requireAuth, async (req, res) => {
+    const { id: my_id } = req.telegramUser;
+    const other_id = parseInt(req.params.with);
+
+    const { error } = await supabase
+      .from('messages')
+      .delete()
+      .or(`and(from_id.eq.${my_id},to_id.eq.${other_id}),and(from_id.eq.${other_id},to_id.eq.${my_id})`);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
   });
 
   return router;
