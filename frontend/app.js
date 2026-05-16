@@ -577,6 +577,17 @@ async function loadSessions() {
   }
 }
 
+async function clearSessionHistory() {
+  if (!confirm('Clear history of ended sessions?')) return;
+  haptic('medium');
+  try {
+    const res = await apiFetch('/api/sessions/my', { method: 'DELETE' });
+    haptic('success');
+    showToast(`Cleared ${res.count || 0} sessions from history`, 'success');
+    loadSessions();
+  } catch (e) { haptic('error'); showToast(e.message, 'error'); }
+}
+
 async function joinSession(session_id) {
   haptic('medium');
   try {
@@ -880,6 +891,18 @@ function appendMessage(msg, isSent) {
   div.innerHTML = renderMessage(msg);
   container.appendChild(div.firstChild);
   container.scrollTop = container.scrollHeight;
+}
+
+async function clearChatHistory() {
+  if (!window.chatState?.with) return;
+  if (!confirm('Clear all messages in this conversation? This cannot be undone.')) return;
+  haptic('medium');
+  try {
+    await apiFetch(`/api/messages/${window.chatState.with}`, { method: 'DELETE' });
+    haptic('success');
+    showToast('Chat history cleared', 'success');
+    loadMessages(window.chatState.with);
+  } catch (e) { haptic('error'); showToast(e.message, 'error'); }
 }
 
 async function sendMessage() {
