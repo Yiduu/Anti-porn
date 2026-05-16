@@ -1460,10 +1460,17 @@ bot.on('callback_query', async (query) => {
     if (!state) return;
     state.tempData.type = type;
     if (type === 'private') {
-      const { data: mentees } = await supabase.from('mentorship_assignments')
-        .select('user_id, users(anonymous_id)').eq('mentor_id', chatId).eq('is_active', true);
+      const { data: assignments, error } = await supabase.from('mentorship_assignments')
+        .select('user_id').eq('mentor_id', chatId).eq('is_active', true);
+      
+      if (error || !assignments?.length) return safeSend(chatId, tSync(lang, 'no_mentees'));
+
+      const menteeIds = assignments.map(a => a.user_id);
+      const { data: mentees } = await supabase.from('users').select('telegram_id, anonymous_id').in('telegram_id', menteeIds);
+
       if (!mentees?.length) return safeSend(chatId, tSync(lang, 'no_mentees'));
-      const buttons = mentees.map(m => [{ text: m.users.anonymous_id, callback_data: `sched_mentee_${m.user_id}` }]);
+
+      const buttons = mentees.map(m => [{ text: m.anonymous_id, callback_data: `sched_mentee_${m.telegram_id}` }]);
       await safeSend(chatId, tSync(lang, 'select_mentee'), { reply_markup: { inline_keyboard: buttons } });
     } else {
       const kb = {
