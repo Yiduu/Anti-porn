@@ -346,13 +346,9 @@ async function createVideoSession(chatId, date, time12h) {
     const timeStr = scheduledAt.toLocaleTimeString('en-US', { timeZone: 'Africa/Addis_Ababa', timeStyle: 'short' });
     const typeLabel = state.tempData.type === 'private' ? 'Private' : 'Group';
 
-    const mentorMsg = `✅ *Session scheduled!*\n\n` +
-      `Date: ${dateStr}\n` +
-      `Time: ${timeStr}\n` +
-      `Type: ${typeLabel}\n\n` +
-      `Join link: ${link}`;
+    const mentorMsg = `✅ Session scheduled!\n\nDate: ${dateStr}\nTime: ${timeStr}\nType: ${typeLabel}\n\nJoin link: ${link}`;
     
-    await safeSend(chatId, mentorMsg);
+    await bot.sendMessage(chatId, mentorMsg);
     console.log(`[Scheduler] Success: Session ${sess.id} created for mentor ${chatId}`);
 
     if (sess.mentee_id) {
@@ -849,13 +845,12 @@ async function broadcastToAll(message, roleFilter) {
 async function notifySessionInvite(chatId, sessionInfo) {
   const lang = await getUserLang(chatId);
   const link = `${APP_URL}?start=session_${sessionInfo.session_id}`;
-  const text = tSync(lang, 'session_invite', {
-    host: sessionInfo.host,
-    title: sessionInfo.title,
-    time: formatUserDateTime(sessionInfo.scheduled_at),
-    link
-  });
-  await safeSend(chatId, text, {
+  const timeStr = formatUserDateTime(sessionInfo.scheduled_at);
+  // Build plain-text invite to avoid Markdown issues with URLs and user-supplied titles
+  const text = lang === 'am'
+    ? `🙏 አዲስ ስብሰባ ታቅዷል!\n\nአስተናጋጅ: ${sessionInfo.host}\nርዕስ: ${sessionInfo.title}\nሰዓት: ${timeStr}\n\nለመቀላቀል: ${link}`
+    : `🙏 New Session Scheduled!\n\nHost: ${sessionInfo.host}\nTitle: ${sessionInfo.title}\nTime: ${timeStr}\n\nJoin here: ${link}`;
+  await bot.sendMessage(chatId, text, {
     reply_markup: {
       inline_keyboard: [[{
         text: tSync(lang, 'btn_join_session'),
