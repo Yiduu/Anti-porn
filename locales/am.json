@@ -146,6 +146,9 @@
     "mentor_application_rejected": "📋 የማመልከቻ መልስ\n\nበሚያሳዝን ሁኔታ ማመልከቻዎ አሁን አልተፈቀደም።",
     "admin_note": "የአስተዳዳሪ ማስታወሻ",
     "reply_usage": "አጠቃቀም: `/reply @ቅጽልስም መልዕክት` ወይም `/reply ቁጥር መልዕክት`",
-    "broadcast": "የጋራ መልዕክት",
-    "help_text": "📖 ትዕዛዞች\n\n`/start` — ጀምር\n`/menu` — ዋና ገጽ\n`/apply` — አማካሪ ለመሆን አመልክት\n`/settopics` — ርዕሶችን ዘምን\n`/reply @ስም መልዕክት` — ለጓደኛ ምላሽ ሰጥ\n`/end` — አሁን ያለው አማካሪነት ይዝጋ\n\nለጓደኛዎ መልዕክት ይጻፉ።"
+    "broadcast": "መልእክት አሰራጭ",
+    "operation_cancelled": "❌ ተግባሩ ተሰርዟል።",
+    "application_cancelled": "❌ ማመልከቻው ተሰርዟል።",
+    "please_use_buttons": "❌ እባክዎን ከላይ ያሉትን ቁልፎች በመጠቀም ይምረጡ።",
+    "help_text": "📖 *Recovery Helper — Commands*\n\n`/start` — ዋና ማውጫ\n`/menu` — ዋና ማውጫ\n`/apply` — አማካሪ ለመሆን አመልክት\n`/settopics` — የሚፈልጓቸውን ርዕሶች ያዘምኑ\n`/reply @nick msg` — ለተለየ አጋር መልስ ይስጡ\n`/end` — የአሁኑን አማካሪነት ያቋርጡ\n\nከአጋርዎ ጋር ለመወያየት በተለመደው ሁኔታ ይጻፉ。"
 }
