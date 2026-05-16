@@ -278,13 +278,13 @@ function getCalendarKeyboard(year, month, lang = 'en') {
 function getTimeSlotsKeyboard(lang = 'en') {
   const slots = ["09:00 AM", "12:00 PM", "03:00 PM", "06:00 PM", "09:00 PM"];
   const keyboard = { inline_keyboard: [] };
-  
+
   // Two slots per row
   for (let i = 0; i < slots.length; i += 2) {
     const row = slots.slice(i, i + 2).map(s => ({ text: s, callback_data: `time_select_${s}` }));
     keyboard.inline_keyboard.push(row);
   }
-  
+
   keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_custom_time'), callback_data: 'time_custom' }]);
   keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_back'), callback_data: 'menu_schedule' }]);
   return keyboard;
@@ -300,20 +300,20 @@ async function createVideoSession(chatId, date, time12h) {
   // Parse 12h time to 24h
   const match = time12h.trim().match(/^(0?[1-9]|1[0-2]):([0-5][0-9])\s?(AM|PM)$/i);
   if (!match) return safeSend(chatId, tSync(lang, 'invalid_time_format'));
-  
+
   let hours = parseInt(match[1]);
   const minutes = match[2];
   const ampm = match[3].toUpperCase();
-  
+
   if (ampm === 'PM' && hours < 12) hours += 12;
   if (ampm === 'AM' && hours === 12) hours = 0;
-  
+
   const time24 = `${String(hours).padStart(2, '0')}:${minutes}`;
-  
+
   // Combine date and time in Ethiopia timezone and convert to UTC
   const localIso = `${date}T${time24}:00+03:00`;
   const scheduledAt = new Date(localIso);
-  
+
   if (isNaN(scheduledAt.getTime())) return safeSend(chatId, tSync(lang, 'invalid_datetime'));
   if (scheduledAt.getTime() < Date.now()) return safeSend(chatId, tSync(lang, 'time_past'));
 
@@ -336,27 +336,27 @@ async function createVideoSession(chatId, date, time12h) {
       status: 'scheduled',
       max_participants: isGroup ? 10 : 2
     }).select().single();
-    
+
     if (error) throw error;
-    
+
     const link = `${APP_URL}?start=session_${sess.id}`;
-    
+
     // Format confirmation details for the mentor
     const dateStr = scheduledAt.toLocaleDateString('en-US', { timeZone: 'Africa/Addis_Ababa', dateStyle: 'medium' });
     const timeStr = scheduledAt.toLocaleTimeString('en-US', { timeZone: 'Africa/Addis_Ababa', timeStyle: 'short' });
     const typeLabel = state.tempData.type === 'private' ? 'Private' : 'Group';
 
     const mentorMsg = `✅ Session scheduled!\n\nDate: ${dateStr}\nTime: ${timeStr}\nType: ${typeLabel}\n\nJoin link: ${link}`;
-    
+
     await bot.sendMessage(chatId, mentorMsg);
     console.log(`[Scheduler] Success: Session ${sess.id} created for mentor ${chatId}`);
 
     if (sess.mentee_id) {
-      await notifySessionInvite(sess.mentee_id, { 
-        session_id: sess.id, 
-        host: 'Your mentor', 
-        title: 'Session', 
-        scheduled_at: scheduledAt.toISOString() 
+      await notifySessionInvite(sess.mentee_id, {
+        session_id: sess.id,
+        host: 'Your mentor',
+        title: 'Session',
+        scheduled_at: scheduledAt.toISOString()
       });
     }
     clearState(chatId);
@@ -369,8 +369,8 @@ async function createVideoSession(chatId, date, time12h) {
 
 // ─── Registration Wizard ──────────────────────────────────────────────────────
 
-async function startRegistration(chatId) {
-  setState(chatId, 'reg_sex');
+async function startRegistration(chatId, startParam = null) {
+  setState(chatId, 'reg_sex', null, { startParam });
   await safeSend(chatId, "Welcome! Let's get you set up. First, what is your sex?", {
     reply_markup: {
       inline_keyboard: [
@@ -747,7 +747,7 @@ async function showSettings(chatId) {
 
 async function toggleSetting(chatId, field) {
   const { data: s } = await supabase.from('user_settings').select('*').eq('telegram_id', chatId).single();
-  
+
   // Default to true if settings are missing
   const currentValue = s ? s[field] : true;
   const newValue = !currentValue;
@@ -794,7 +794,7 @@ async function acceptMentorship(mentorId, userId, topicId) {
   await supabase.from('mentorship_requests').update({ status: 'accepted' }).eq('mentor_id', mentorId).eq('user_id', userId);
   await safeSend(userId, tSync(userLang, 'mentorship_accepted'));
   await safeSend(mentorId, tSync(mentorLang, 'mentorship_accepted_mentor'));
-  
+
   // Log success
   console.log(`[Accept] Assignment created: mentor=${mentorId}, user=${userId}, topic=${topicId}`);
 }
@@ -854,7 +854,7 @@ async function notifySessionInvite(chatId, sessionInfo) {
     reply_markup: {
       inline_keyboard: [[{
         text: tSync(lang, 'btn_join_session'),
-        url: `https://t.me/${process.env.BOT_USERNAME || 'RecoveryBot'}?start=session_${sessionInfo.session_id}`
+        web_app: { url: `${APP_URL}?start=session_${sessionInfo.session_id}` }
       }]]
     }
   });
@@ -878,7 +878,26 @@ bot.on('message', async (msg) => {
 
     if (!isFlowCommand) {
       if (command === '/start') {
+        const args = text.split(' ');
         const { data: user } = await supabase.from('users').select('*').eq('telegram_id', chatId).single();
+        
+        if (args.length > 1 && args[1].startsWith('session_')) {
+          const sessionId = args[1].replace('session_', '');
+          if (!user) {
+            // New user trying to join a session - start registration but keep the session ID
+            return startRegistration(chatId, sessionId);
+          }
+          const lang = await getUserLang(chatId);
+          return bot.sendMessage(chatId, tSync(lang, 'session_invite'), {
+            reply_markup: {
+              inline_keyboard: [[{
+                text: tSync(lang, 'btn_join_session'),
+                web_app: { url: `${APP_URL}?start=session_${sessionId}` }
+              }]]
+            }
+          });
+        }
+
         if (!user) return startRegistration(chatId);
         return showMainMenu(chatId, await t(chatId, 'welcome_back', { nick: user.anonymous_id }));
       }
@@ -911,7 +930,7 @@ bot.on('message', async (msg) => {
       if (command === '/repair_assignments') {
         const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
         if (user?.role !== 'admin') return;
-        
+
         const { data: assignments } = await supabase.from('mentorship_assignments').select('*').eq('is_active', true);
         let repaired = 0;
         for (const ass of assignments || []) {
@@ -919,7 +938,7 @@ bot.on('message', async (msg) => {
             supabase.from('users').select('role').eq('telegram_id', ass.mentor_id).single(),
             supabase.from('users').select('role').eq('telegram_id', ass.user_id).single()
           ]);
-          
+
           if (m?.role === 'user' && u?.role === 'mentor') {
             await supabase.from('mentorship_assignments').update({ mentor_id: ass.user_id, user_id: ass.mentor_id }).eq('id', ass.id);
             repaired++;
@@ -982,7 +1001,7 @@ bot.on('message', async (msg) => {
   if (textMatches('btn_my_mentees')) {
     const { data: mentees, error } = await supabase.from('mentorship_assignments')
       .select('user_id, topics(name)').eq('mentor_id', chatId).eq('is_active', true);
-    
+
     if (error) { console.error('[My Mentees] Error:', error); return safeSend(chatId, 'Error loading mentees.'); }
 
     if (!mentees?.length) {
@@ -1066,11 +1085,11 @@ bot.on('message', async (msg) => {
       }
 
       const { error } = await supabase.from('mentor_applications').insert({
-        telegram_id: chatId, 
+        telegram_id: chatId,
         sex: state.tempData.sex,
         educational_background: state.tempData.educational_background,
         about_me: about,
-        status: 'pending', 
+        status: 'pending',
         submitted_at: new Date().toISOString()
       });
 
@@ -1157,13 +1176,13 @@ bot.on('message', async (msg) => {
         hour = parseInt(text);
         if (isNaN(hour) || hour < 0 || hour > 23) return safeSend(chatId, await t(chatId, 'invalid_hour'));
       }
-      
+
       await supabase.from('user_settings').update({ verse_time: hour }).eq('telegram_id', chatId);
       await safeSend(chatId, await t(chatId, 'verse_time_set', { hour: format12h(hour) }));
       clearState(chatId); return showMainMenu(chatId);
     }
   }
-  
+
   // 🛡️ CHAT SHIELD: Only allow forwarding if NOT in a flow state
   if (!state || state.step === 'chat_active') {
     const partnersInfo = await getActiveChatPartners(chatId);
@@ -1304,8 +1323,21 @@ bot.on('callback_query', async (query) => {
     setLangCache(chatId, selectedLang);
     const topics = state.tempData.selectedTopics || [];
     for (const tid of topics) await supabase.from('user_topics').insert({ telegram_id: chatId, topic_id: tid });
+    const startParam = state.tempData.startParam;
     clearState(chatId);
     await showMainMenu(chatId, tSync(selectedLang, 'registration_complete', { lang: selectedLang === 'en' ? 'English' : 'አማርኛ' }));
+    
+    if (startParam && startParam.startsWith('session_')) {
+      const sessionId = startParam.replace('session_', '');
+      await bot.sendMessage(chatId, tSync(selectedLang, 'session_invite'), {
+        reply_markup: {
+          inline_keyboard: [[{
+            text: tSync(selectedLang, 'btn_join_session'),
+            web_app: { url: `${APP_URL}?start=session_${sessionId}` }
+          }]]
+        }
+      });
+    }
   }
 
   // Mentor Search & Sort
@@ -1563,7 +1595,7 @@ bot.on('callback_query', async (query) => {
   else if (data === 'menu_mentees') {
     const { data: mentees, error } = await supabase.from('mentorship_assignments')
       .select('user_id, topics(name)').eq('mentor_id', chatId).eq('is_active', true);
-    
+
     if (error) { console.error('[My Mentees] Error:', error); return bot.answerCallbackQuery(query.id, { text: 'Error loading mentees.' }); }
 
     if (!mentees?.length) {
@@ -1651,7 +1683,7 @@ setInterval(async () => {
   const { error } = await supabase.from('bible_streaks')
     .update({ current_streak: 0 })
     .lt('last_read_date', yestStr);
-  
+
   if (!error) console.log('[Scheduler] Daily streak reset check completed.');
 }, 60 * 1000);
 
