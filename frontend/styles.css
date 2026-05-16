@@ -509,3 +509,26 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .stat-card:last-child { grid-column: span 2; }
 }
+
+/* ─── Feature Extensions ────────────────────────────────────── */
+.streak-card {
+  background: linear-gradient(135deg, rgba(255,165,0,0.1) 0%, rgba(255,69,0,0.05) 100%);
+  border: 1px solid rgba(255,165,0,0.2);
+  cursor: pointer; transition: transform 0.2s ease;
+}
+.streak-card:active { transform: scale(0.98); }
+.streak-icon {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--gold-dim); display: flex;
+  align-items: center; justify-content: center;
+  font-size: 1.2rem;
+}
+.journal-item {
+  padding: 12px; background: var(--bg2);
+  border-radius: var(--radius-sm); border-left: 3px solid var(--gold);
+  cursor: pointer; transition: background 0.2s;
+  margin-bottom: 8px;
+}
+.journal-item:hover { background: var(--bg3); }
+.journal-date { font-size: 0.7rem; color: var(--text3); margin-bottom: 4px; }
+.journal-preview { font-size: 0.85rem; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
