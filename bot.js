@@ -950,12 +950,22 @@ bot.on('message', async (msg) => {
     if (user?.role === 'mentor' || user?.role === 'admin') return safeSend(chatId, tSync(lang, 'already_mentor'));
     const { data: ex } = await supabase.from('mentor_applications').select('id').eq('telegram_id', chatId).eq('status', 'pending').single();
     if (ex) return safeSend(chatId, tSync(lang, 'application_pending'));
-    setState(chatId, 'awaiting_mentor_q1');
-    return safeSend(chatId, tSync(lang, 'apply_q1'));
+    setState(chatId, 'awaiting_mentor_sex');
+    return safeSend(chatId, tSync(lang, 'apply_q1'), {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'sex_male'), callback_data: 'mentor_sex_M' }, { text: tSync(lang, 'sex_female'), callback_data: 'mentor_sex_F' }],
+          [{ text: tSync(lang, 'sex_prefer_not'), callback_data: 'mentor_sex_prefer_not' }]
+        ]
+      }
+    });
   }
 
   // Flow Steps
   if (state) {
+    if (state.step === 'awaiting_mentor_sex') {
+      return safeSend(chatId, tSync(lang, 'please_use_buttons'));
+    }
     if (state.step === 'reg_nickname') {
       const nick = text.trim();
       if (nick.length < 3 || nick.length > 20 || !/^[a-zA-Z0-9_]+$/.test(nick))
