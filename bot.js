@@ -294,6 +294,7 @@ async function createVideoSession(chatId, date, time12h) {
   if (scheduledAt.getTime() < Date.now()) return safeSend(chatId, tSync(lang, 'time_past'));
 
   try {
+    console.log(`[Scheduler] Creating session for ${chatId} at ${scheduledAt.toISOString()}`);
     const { data: sess, error } = await supabase.from('video_sessions').insert({
       mentor_id: chatId, 
       scheduled_at: scheduledAt.toISOString(),
@@ -305,8 +306,21 @@ async function createVideoSession(chatId, date, time12h) {
     if (error) throw error;
     
     const link = `${APP_URL}?start=session_${sess.id}`;
-    await safeSend(chatId, tSync(lang, 'session_scheduled', { link }));
     
+    // Format confirmation details for the mentor
+    const dateStr = scheduledAt.toLocaleDateString('en-US', { timeZone: 'Africa/Addis_Ababa', dateStyle: 'medium' });
+    const timeStr = scheduledAt.toLocaleTimeString('en-US', { timeZone: 'Africa/Addis_Ababa', timeStyle: 'short' });
+    const typeLabel = state.tempData.type === 'private' ? 'Private' : 'Group';
+
+    const mentorMsg = `✅ *Session scheduled!*\n\n` +
+      `Date: ${dateStr}\n` +
+      `Time: ${timeStr}\n` +
+      `Type: ${typeLabel}\n\n` +
+      `Join link: ${link}`;
+    
+    await safeSend(chatId, mentorMsg);
+    console.log(`[Scheduler] Success: Session ${sess.id} created for mentor ${chatId}`);
+
     if (sess.mentee_id) {
       await notifySessionInvite(sess.mentee_id, { 
         session_id: sess.id, 
@@ -318,7 +332,8 @@ async function createVideoSession(chatId, date, time12h) {
     clearState(chatId);
     await showMainMenu(chatId);
   } catch (e) {
-    await safeSend(chatId, `❌ ${e.message}`);
+    console.error(`[Scheduler] Error creating session:`, e.message);
+    await safeSend(chatId, `❌ Failed to schedule session. Please try again.`);
   }
 }
 
