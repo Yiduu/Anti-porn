@@ -210,24 +210,29 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
   // DELETE /api/sessions/my – clear session history (remove self from ended sessions)
   router.delete('/my', requireAuth, async (req, res) => {
     const { id: telegram_id } = req.telegramUser;
+    console.log('[Sessions] Clearing history for:', telegram_id);
     
     // Find sessions that have ended
     const { data: ended } = await supabase
       .from('video_sessions')
       .select('id')
-      .in('status', ['ended', 'completed']);
+      .in('status', ['ended', 'completed', 'cancelled', 'expired']);
     
-    if (!ended?.length) return res.json({ success: true, count: 0 });
+    if (!ended?.length) {
+      console.log('[Sessions] No ended sessions found.');
+      return res.json({ success: true, count: 0 });
+    }
     
     const ids = ended.map(s => s.id);
-    const { error, count } = await supabase
+    const { data: deleted, error } = await supabase
       .from('session_participants')
       .delete()
       .eq('telegram_id', telegram_id)
-      .in('session_id', ids);
+      .in('session_id', ids)
+      .select();
 
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ success: true, count });
+    res.json({ success: true, count: deleted?.length || 0 });
   });
 
   return router;
