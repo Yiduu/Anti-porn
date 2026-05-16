@@ -150,10 +150,20 @@ async function init() {
 }
 
 function handleDeepLink() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const startParam = urlParams.get('start');
+  const tg = window.Telegram?.WebApp;
+  const startParam = tg?.initDataUnsafe?.start_param;
+  
   if (startParam && startParam.startsWith('session_')) {
     const sessionId = startParam.replace('session_', '');
+    setTimeout(() => joinSession(sessionId), 100);
+    return;
+  }
+
+  // Fallback for direct browser testing
+  const urlParams = new URLSearchParams(window.location.search);
+  const browserStart = urlParams.get('start');
+  if (browserStart && browserStart.startsWith('session_')) {
+    const sessionId = browserStart.replace('session_', '');
     setTimeout(() => joinSession(sessionId), 100);
   }
 }
