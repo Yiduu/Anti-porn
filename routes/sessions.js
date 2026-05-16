@@ -207,5 +207,28 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
     res.json({ success: true });
   });
 
+  // DELETE /api/sessions/my – clear session history (remove self from ended sessions)
+  router.delete('/my', requireAuth, async (req, res) => {
+    const { id: telegram_id } = req.telegramUser;
+    
+    // Find sessions that have ended
+    const { data: ended } = await supabase
+      .from('video_sessions')
+      .select('id')
+      .in('status', ['ended', 'completed']);
+    
+    if (!ended?.length) return res.json({ success: true, count: 0 });
+    
+    const ids = ended.map(s => s.id);
+    const { error, count } = await supabase
+      .from('session_participants')
+      .delete()
+      .eq('telegram_id', telegram_id)
+      .in('session_id', ids);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, count });
+  });
+
   return router;
 };
