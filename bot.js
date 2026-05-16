@@ -312,14 +312,21 @@ async function createVideoSession(chatId, date, time12h) {
 
   try {
     console.log(`[Scheduler] Creating session for ${chatId} at ${scheduledAt.toISOString()}`);
-    const roomName = Math.random().toString(36).substring(2, 10);
+    const roomName = `recovery_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const roomPassword = Math.random().toString(36).substring(2, 10);
+    const isGroup = state.tempData.type === 'group';
+    const menteeId = state.tempData.mentee_id ? parseInt(state.tempData.mentee_id) : null;
+
     const { data: sess, error } = await supabase.from('video_sessions').insert({
-      mentor_id: chatId, 
+      mentor_id: chatId,
       scheduled_at: scheduledAt.toISOString(),
-      type: state.tempData.type || 'private', 
-      mentee_id: state.tempData.mentee_id || null, 
+      is_group: isGroup,
+      title: isGroup ? 'Group Session' : '1-on-1 Session',
+      mentee_id: menteeId,
       room_name: roomName,
-      status: 'scheduled'
+      room_password: roomPassword,
+      status: 'scheduled',
+      max_participants: isGroup ? 10 : 2
     }).select().single();
     
     if (error) throw error;
@@ -719,8 +726,8 @@ async function showSettings(chatId) {
 
   const kb = {
     inline_keyboard: [
-      [{ text: `🔔 ${tSync(lang, 'settings_verse_notif')}: ${s?.notif_verse ? tSync(lang, 'on') : tSync(lang, 'off')}`, callback_data: 'settings_toggle_notif_verse' }],
-      [{ text: `🔔 ${tSync(lang, 'settings_msg_notif')}: ${s?.notif_messages ? tSync(lang, 'on') : tSync(lang, 'off')}`, callback_data: 'settings_toggle_notif_messages' }],
+      [{ text: `🔔 ${tSync(lang, 'settings_verse_notif')}: ${s?.notify_daily_verse ? tSync(lang, 'on') : tSync(lang, 'off')}`, callback_data: 'settings_toggle_notify_daily_verse' }],
+      [{ text: `🔔 ${tSync(lang, 'settings_msg_notif')}: ${s?.notify_messages ? tSync(lang, 'on') : tSync(lang, 'off')}`, callback_data: 'settings_toggle_notify_messages' }],
       [{ text: `⏰ ${tSync(lang, 'settings_verse_time')}: ${format12h(s?.verse_time ?? 0)}`, callback_data: 'settings_time' }],
       [{ text: `🌍 ${tSync(lang, 'settings_language')}: ${lang === 'en' ? 'EN' : 'አማ'}`, callback_data: 'settings_lang' }],
       [{ text: `📚 ${tSync(lang, 'settings_my_topics')}`, callback_data: 'settings_topics' }]
@@ -1112,7 +1119,7 @@ bot.on('message', async (msg) => {
     if (state.step === 'mentor_req_msg') {
       const { mentorId, topicId } = state.tempData;
       const msgStr = text === '/skip' ? '' : text.trim();
-      const { error } = await supabase.from('mentorship_requests').insert({ user_id: chatId, mentor_id: mentorId, message: msgStr });
+      const { error } = await supabase.from('mentorship_requests').insert({ user_id: chatId, mentor_id: mentorId, topic_id: topicId, message: msgStr });
       if (error) await safeSend(chatId, await t(chatId, 'request_failed'));
       else {
         const [{ data: u }, { data: topic }] = await Promise.all([
@@ -1157,30 +1164,30 @@ bot.on('message', async (msg) => {
   // 🛡️ CHAT SHIELD: Only allow forwarding if NOT in a flow state
   if (!state || state.step === 'chat_active') {
     const partnersInfo = await getActiveChatPartners(chatId);
-  if (!partnersInfo) {
-    const lang = await getUserLang(chatId);
-    return safeSend(chatId, tSync(lang, 'no_active_mentor'), {
-      reply_markup: { inline_keyboard: [[{ text: tSync(lang, 'btn_find_mentor'), callback_data: 'menu_mentors' }]] }
-    });
-  }
-
-  let targetId = null;
-  if (partnersInfo.partners.length === 1) {
-    targetId = partnersInfo.partners[0];
-  } else {
-    if (state?.step === 'chat_active' && state.targetId) {
-      targetId = state.targetId;
-    } else {
+    if (!partnersInfo) {
       const lang = await getUserLang(chatId);
-      const { data: mentees } = await supabase.from('users').select('telegram_id, anonymous_id').in('telegram_id', partnersInfo.partners);
-      let listStr = tSync(lang, 'multiple_partners') + '\n\n';
-      mentees.forEach((m, i) => listStr += `${i + 1}. @${m.anonymous_id}\n`);
-      listStr += `\n${tSync(lang, 'use_reply_cmd')}`;
-      return safeSend(chatId, listStr);
+      return safeSend(chatId, tSync(lang, 'no_active_mentor'), {
+        reply_markup: { inline_keyboard: [[{ text: tSync(lang, 'btn_find_mentor'), callback_data: 'menu_mentors' }]] }
+      });
     }
-  }
 
-  if (targetId) await forwardMessage(chatId, targetId, text.trim());
+    let targetId = null;
+    if (partnersInfo.partners.length === 1) {
+      targetId = partnersInfo.partners[0];
+    } else {
+      if (state?.step === 'chat_active' && state.targetId) {
+        targetId = state.targetId;
+      } else {
+        const lang = await getUserLang(chatId);
+        const { data: mentees } = await supabase.from('users').select('telegram_id, anonymous_id').in('telegram_id', partnersInfo.partners);
+        let listStr = tSync(lang, 'multiple_partners') + '\n\n';
+        mentees.forEach((m, i) => listStr += `${i + 1}. @${m.anonymous_id}\n`);
+        listStr += `\n${tSync(lang, 'use_reply_cmd')}`;
+        return safeSend(chatId, listStr);
+      }
+    }
+
+    if (targetId) await forwardMessage(chatId, targetId, text.trim());
   }
 });
 
@@ -1461,13 +1468,23 @@ bot.on('callback_query', async (query) => {
   }
   else if (data.startsWith('sched_type_')) {
     const type = data.replace('sched_type_', '');
-    if (!state) return;
+    if (!state) return bot.answerCallbackQuery(query.id, { text: tSync(lang, 'session_expired'), show_alert: true });
     state.tempData.type = type;
     if (type === 'private') {
       const { data: assignments, error } = await supabase.from('mentorship_assignments')
         .select('user_id').eq('mentor_id', chatId).eq('is_active', true);
-      
-      if (error || !assignments?.length) return safeSend(chatId, tSync(lang, 'no_mentees'));
+
+      // Auto-repair swapped assignments (same logic as btn_my_mentees)
+      if (error || !assignments?.length) {
+        const { data: swapped } = await supabase.from('mentorship_assignments')
+          .select('id, mentor_id').eq('user_id', chatId).eq('is_active', true);
+        if (swapped?.length) {
+          await supabase.from('mentorship_assignments')
+            .update({ mentor_id: chatId, user_id: swapped[0].mentor_id }).eq('id', swapped[0].id);
+          return bot.answerCallbackQuery(query.id, { text: '⚠️ Repaired. Please tap Schedule again.', show_alert: true });
+        }
+        return safeSend(chatId, tSync(lang, 'no_mentees'));
+      }
 
       const menteeIds = assignments.map(a => a.user_id);
       const { data: mentees } = await supabase.from('users').select('telegram_id, anonymous_id').in('telegram_id', menteeIds);
@@ -1514,6 +1531,7 @@ bot.on('callback_query', async (query) => {
     await safeSend(chatId, tSync(lang, 'enter_time'), { reply_markup: getTimeSlotsKeyboard(lang) });
   }
   else if (data === 'sched_date_calendar') {
+    if (!state) return bot.answerCallbackQuery(query.id);
     const now = getEthiopiaNow();
     await safeSend(chatId, tSync(lang, 'enter_date'), { reply_markup: getCalendarKeyboard(now.getFullYear(), now.getMonth(), lang) });
   }
