@@ -122,7 +122,7 @@ async function safeSendLoading(chatId, text) {
 }
 
 async function deleteMessage(chatId, messageId) {
-  try { await bot.deleteMessage(chatId, messageId); } catch {}
+  try { await bot.deleteMessage(chatId, messageId); } catch { }
 }
 
 // ─── Update Last Activity ─────────────────────────────────────────────────────
@@ -197,6 +197,129 @@ async function getMentorTopicKeyboard(chatId, lang = 'en') {
     { text: tSync(lang, 'btn_cancel'), callback_data: 'topic_cancel' }
   ]);
   return { inline_keyboard: buttons };
+}
+
+// ─── Inline Calendar ──────────────────────────────────────────────────────────
+
+function getEthiopiaNow() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }));
+}
+
+function getCalendarKeyboard(year, month, lang = 'en') {
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const header = `${months[month]} ${year}`;
+  const keyboard = { inline_keyboard: [] };
+
+  // Month navigation row
+  const prevMonth = month === 0 ? 11 : month - 1;
+  const prevYear = month === 0 ? year - 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const nextYear = month === 11 ? year + 1 : year;
+
+  keyboard.inline_keyboard.push([
+    { text: "◀️", callback_data: `cal_nav_${prevYear}_${prevMonth}` },
+    { text: header, callback_data: "noop" },
+    { text: "▶️", callback_data: `cal_nav_${nextYear}_${nextMonth}` }
+  ]);
+
+  // Weekdays row
+  const weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+  keyboard.inline_keyboard.push(weekdays.map(d => ({ text: d, callback_data: "noop" })));
+
+  // Days grid
+  const firstDay = new Date(Date.UTC(year, month, 1));
+  let dayOfWeek = (firstDay.getUTCDay() + 6) % 7; // 0=Mo, 6=Su
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+
+  let currentRow = Array(dayOfWeek).fill({ text: " ", callback_data: "noop" });
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    currentRow.push({ text: d.toString(), callback_data: `cal_select_${dateStr}` });
+    if (currentRow.length === 7) {
+      keyboard.inline_keyboard.push(currentRow);
+      currentRow = [];
+    }
+  }
+  if (currentRow.length > 0) {
+    while (currentRow.length < 7) currentRow.push({ text: " ", callback_data: "noop" });
+    keyboard.inline_keyboard.push(currentRow);
+  }
+
+  keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_back'), callback_data: 'menu_schedule' }]);
+  return keyboard;
+}
+
+// ─── Time Selection ───────────────────────────────────────────────────────────
+
+function getTimeSlotsKeyboard(lang = 'en') {
+  const slots = ["09:00 AM", "12:00 PM", "03:00 PM", "06:00 PM", "09:00 PM"];
+  const keyboard = { inline_keyboard: [] };
+  
+  // Two slots per row
+  for (let i = 0; i < slots.length; i += 2) {
+    const row = slots.slice(i, i + 2).map(s => ({ text: s, callback_data: `time_select_${s}` }));
+    keyboard.inline_keyboard.push(row);
+  }
+  
+  keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_custom_time'), callback_data: 'time_custom' }]);
+  keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_back'), callback_data: 'menu_schedule' }]);
+  return keyboard;
+}
+
+// ─── Session Creation Helper ──────────────────────────────────────────────────
+
+async function createVideoSession(chatId, date, time12h) {
+  const lang = await getUserLang(chatId);
+  const state = getState(chatId);
+  if (!state) return;
+
+  // Parse 12h time to 24h
+  const match = time12h.trim().match(/^(0?[1-9]|1[0-2]):([0-5][0-9])\s?(AM|PM)$/i);
+  if (!match) return safeSend(chatId, tSync(lang, 'invalid_time_format'));
+  
+  let hours = parseInt(match[1]);
+  const minutes = match[2];
+  const ampm = match[3].toUpperCase();
+  
+  if (ampm === 'PM' && hours < 12) hours += 12;
+  if (ampm === 'AM' && hours === 12) hours = 0;
+  
+  const time24 = `${String(hours).padStart(2, '0')}:${minutes}`;
+  
+  // Combine date and time in Ethiopia timezone and convert to UTC
+  const localIso = `${date}T${time24}:00+03:00`;
+  const scheduledAt = new Date(localIso);
+  
+  if (isNaN(scheduledAt.getTime())) return safeSend(chatId, tSync(lang, 'invalid_datetime'));
+  if (scheduledAt.getTime() < Date.now()) return safeSend(chatId, tSync(lang, 'time_past'));
+
+  try {
+    const { data: sess, error } = await supabase.from('video_sessions').insert({
+      mentor_id: chatId, 
+      scheduled_at: scheduledAt.toISOString(),
+      type: state.tempData.type, 
+      mentee_id: state.tempData.mentee_id || null, 
+      status: 'scheduled'
+    }).select().single();
+    
+    if (error) throw error;
+    
+    const link = `${APP_URL}?start=session_${sess.id}`;
+    await safeSend(chatId, tSync(lang, 'session_scheduled', { link }));
+    
+    if (sess.mentee_id) {
+      await notifySessionInvite(sess.mentee_id, { 
+        session_id: sess.id, 
+        host: 'Your mentor', 
+        title: 'Session', 
+        scheduled_at: scheduledAt.toISOString() 
+      });
+    }
+    clearState(chatId);
+    await showMainMenu(chatId);
+  } catch (e) {
+    await safeSend(chatId, `❌ ${e.message}`);
+  }
 }
 
 // ─── Registration Wizard ──────────────────────────────────────────────────────
@@ -384,7 +507,7 @@ async function promptRating(userId, mentorId) {
   await safeSend(userId, tSync(lang, 'rate_mentor_prompt', { name: displayName }), {
     reply_markup: {
       inline_keyboard: [
-        [1,2,3,4,5].map(n => ({ text: '⭐'.repeat(n), callback_data: `rate_${mentorId}_${n}` }))
+        [1, 2, 3, 4, 5].map(n => ({ text: '⭐'.repeat(n), callback_data: `rate_${mentorId}_${n}` }))
       ]
     }
   });
@@ -789,32 +912,9 @@ bot.on('message', async (msg) => {
       clearState(chatId); return safeSend(chatId, '✅ Application rejected with note.');
     }
 
-    if (state.step === 'sched_date') {
-      state.tempData.date = text.trim();
-      setState(chatId, 'sched_time', null, state.tempData);
-      return safeSend(chatId, await t(chatId, 'enter_time'));
-    }
-    if (state.step === 'sched_time') {
-      let rawTime = text.trim().replace(/\./g, ':');
-      let rawDate = state.tempData.date.replace(/\//g, '-');
-      if (!rawTime.includes(':')) rawTime += ':00';
-      const dParts = rawDate.split('-');
-      if (dParts[0].length === 2 && dParts[2]?.length === 4)
-        rawDate = `${dParts[2]}-${dParts[1]}-${dParts[0]}`;
-      const dateStr = `${rawDate}T${rawTime}:00Z`;
-      if (isNaN(Date.parse(dateStr))) return safeSend(chatId, await t(chatId, 'invalid_datetime'));
-      try {
-        const { data: sess, error } = await supabase.from('video_sessions').insert({
-          mentor_id: chatId, scheduled_at: dateStr,
-          type: state.tempData.type, mentee_id: state.tempData.mentee_id || null, status: 'scheduled'
-        }).select().single();
-        if (error) throw error;
-        const link = `${APP_URL}?start=session_${sess.id}`;
-        await safeSend(chatId, await t(chatId, 'session_scheduled', { link }));
-        if (sess.mentee_id)
-          await notifySessionInvite(sess.mentee_id, { session_id: sess.id, host: 'Your mentor', title: 'Session', scheduled_at: dateStr });
-      } catch (e) { await safeSend(chatId, `❌ ${e.message}`); }
-      clearState(chatId); return showMainMenu(chatId);
+    if (state.step === 'sched_custom_time') {
+      await createVideoSession(chatId, state.tempData.date, text.trim());
+      return;
     }
 
     if (state.step === 'journal_new') {
@@ -904,21 +1004,25 @@ bot.on('callback_query', async (query) => {
     setState(chatId, 'reg_age', null, { sex: data.replace('reg_sex_', '') });
     await bot.editMessageText(tSync(lang, 'reg_age_prompt'), {
       chat_id: chatId, message_id: query.message.message_id,
-      reply_markup: { inline_keyboard: [
-        [{ text: '13-17', callback_data: 'reg_age_13-17' }, { text: '18-24', callback_data: 'reg_age_18-24' }],
-        [{ text: '25-34', callback_data: 'reg_age_25-34' }, { text: '35-44', callback_data: 'reg_age_35-44' }],
-        [{ text: '45-54', callback_data: 'reg_age_45-54' }, { text: '55+', callback_data: 'reg_age_55+' }]
-      ]}
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '13-17', callback_data: 'reg_age_13-17' }, { text: '18-24', callback_data: 'reg_age_18-24' }],
+          [{ text: '25-34', callback_data: 'reg_age_25-34' }, { text: '35-44', callback_data: 'reg_age_35-44' }],
+          [{ text: '45-54', callback_data: 'reg_age_45-54' }, { text: '55+', callback_data: 'reg_age_55+' }]
+        ]
+      }
     });
   } else if (data.startsWith('reg_age_')) {
     setState(chatId, 'reg_edu', null, { ...state?.tempData, age_range: data.replace('reg_age_', '') });
     await bot.editMessageText(tSync(lang, 'reg_edu_prompt'), {
       chat_id: chatId, message_id: query.message.message_id,
-      reply_markup: { inline_keyboard: [
-        [{ text: tSync(lang, 'edu_primary'), callback_data: 'reg_edu_primary' }, { text: tSync(lang, 'edu_secondary'), callback_data: 'reg_edu_secondary' }],
-        [{ text: tSync(lang, 'edu_undergrad'), callback_data: 'reg_edu_undergraduate' }, { text: tSync(lang, 'edu_grad'), callback_data: 'reg_edu_graduate' }],
-        [{ text: tSync(lang, 'edu_postgrad'), callback_data: 'reg_edu_postgraduate' }, { text: tSync(lang, 'edu_none'), callback_data: 'reg_edu_none' }]
-      ]}
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'edu_primary'), callback_data: 'reg_edu_primary' }, { text: tSync(lang, 'edu_secondary'), callback_data: 'reg_edu_secondary' }],
+          [{ text: tSync(lang, 'edu_undergrad'), callback_data: 'reg_edu_undergraduate' }, { text: tSync(lang, 'edu_grad'), callback_data: 'reg_edu_graduate' }],
+          [{ text: tSync(lang, 'edu_postgrad'), callback_data: 'reg_edu_postgraduate' }, { text: tSync(lang, 'edu_none'), callback_data: 'reg_edu_none' }]
+        ]
+      }
     });
   } else if (data.startsWith('reg_edu_')) {
     setState(chatId, 'reg_nickname', null, { ...state?.tempData, education_level: data.replace('reg_edu_', '') });
@@ -938,10 +1042,12 @@ bot.on('callback_query', async (query) => {
         setState(chatId, 'reg_language', null, state.tempData);
         await bot.editMessageText(tSync(lang, 'reg_lang_prompt'), {
           chat_id: chatId, message_id: query.message.message_id,
-          reply_markup: { inline_keyboard: [[
-            { text: 'English', callback_data: 'reg_lang_en' },
-            { text: 'አማርኛ', callback_data: 'reg_lang_am' }
-          ]]}
+          reply_markup: {
+            inline_keyboard: [[
+              { text: 'English', callback_data: 'reg_lang_en' },
+              { text: 'አማርኛ', callback_data: 'reg_lang_am' }
+            ]]
+          }
         });
       } else {
         await supabase.from('user_topics').delete().eq('telegram_id', chatId);
@@ -1040,10 +1146,12 @@ bot.on('callback_query', async (query) => {
   else if (data === 'streak_mark') await markStreakAsRead(chatId);
   else if (data === 'menu_journal') {
     await safeSend(chatId, `✏️ *${tSync(lang, 'journal_title')}*`, {
-      reply_markup: { inline_keyboard: [
-        [{ text: tSync(lang, 'btn_new_entry'), callback_data: 'journal_new' }],
-        [{ text: tSync(lang, 'btn_view_entries'), callback_data: 'journal_view_0' }]
-      ]}
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'btn_new_entry'), callback_data: 'journal_new' }],
+          [{ text: tSync(lang, 'btn_view_entries'), callback_data: 'journal_view_0' }]
+        ]
+      }
     });
   }
   else if (data === 'journal_new') { setState(chatId, 'journal_new'); await safeSend(chatId, tSync(lang, 'journal_write_prompt')); }
@@ -1105,10 +1213,12 @@ bot.on('callback_query', async (query) => {
   else if (data === 'settings_lang') {
     await bot.editMessageText(tSync(lang, 'choose_language'), {
       chat_id: chatId, message_id: query.message.message_id,
-      reply_markup: { inline_keyboard: [[
-        { text: 'English', callback_data: 'set_lang_en' },
-        { text: 'አማርኛ', callback_data: 'set_lang_am' }
-      ]]}
+      reply_markup: {
+        inline_keyboard: [[
+          { text: 'English', callback_data: 'set_lang_en' },
+          { text: 'አማርኛ', callback_data: 'set_lang_am' }
+        ]]
+      }
     });
   }
   else if (data.startsWith('set_lang_')) {
@@ -1122,10 +1232,12 @@ bot.on('callback_query', async (query) => {
   else if (data === 'menu_schedule') {
     setState(chatId, 'sched_type', null, { type: 'group' });
     await safeSend(chatId, tSync(lang, 'select_session_type'), {
-      reply_markup: { inline_keyboard: [
-        [{ text: tSync(lang, 'session_private'), callback_data: 'sched_type_private' }],
-        [{ text: tSync(lang, 'session_group'), callback_data: 'sched_type_group' }]
-      ]}
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'session_private'), callback_data: 'sched_type_private' }],
+          [{ text: tSync(lang, 'session_group'), callback_data: 'sched_type_group' }]
+        ]
+      }
     });
   }
   else if (data.startsWith('sched_type_')) {
@@ -1139,15 +1251,65 @@ bot.on('callback_query', async (query) => {
       const buttons = mentees.map(m => [{ text: m.users.anonymous_id, callback_data: `sched_mentee_${m.user_id}` }]);
       await safeSend(chatId, tSync(lang, 'select_mentee'), { reply_markup: { inline_keyboard: buttons } });
     } else {
-      setState(chatId, 'sched_date', null, state.tempData);
-      await safeSend(chatId, tSync(lang, 'enter_date'));
+      const kb = {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'btn_today'), callback_data: 'sched_date_today' }],
+          [{ text: tSync(lang, 'btn_tomorrow'), callback_data: 'sched_date_tomorrow' }],
+          [{ text: tSync(lang, 'btn_pick_day'), callback_data: 'sched_date_calendar' }],
+          [{ text: tSync(lang, 'btn_back'), callback_data: 'menu_schedule' }]
+        ]
+      };
+      await safeSend(chatId, tSync(lang, 'enter_date'), { reply_markup: kb });
     }
   }
   else if (data.startsWith('sched_mentee_')) {
     if (!state) return;
     state.tempData.mentee_id = data.replace('sched_mentee_', '');
-    setState(chatId, 'sched_date', null, state.tempData);
-    await safeSend(chatId, tSync(lang, 'enter_date'));
+    const kb = {
+      inline_keyboard: [
+        [{ text: tSync(lang, 'btn_today'), callback_data: 'sched_date_today' }],
+        [{ text: tSync(lang, 'btn_tomorrow'), callback_data: 'sched_date_tomorrow' }],
+        [{ text: tSync(lang, 'btn_pick_day'), callback_data: 'sched_date_calendar' }],
+        [{ text: tSync(lang, 'btn_back'), callback_data: 'menu_schedule' }]
+      ]
+    };
+    await safeSend(chatId, tSync(lang, 'enter_date'), { reply_markup: kb });
+  }
+  else if (data === 'sched_date_today') {
+    const today = getEthiopiaNow().toISOString().split('T')[0];
+    if (!state) return;
+    state.tempData.date = today;
+    await safeSend(chatId, tSync(lang, 'enter_time'), { reply_markup: getTimeSlotsKeyboard(lang) });
+  }
+  else if (data === 'sched_date_tomorrow') {
+    const tomorrow = new Date(getEthiopiaNow().getTime() + 86400000).toISOString().split('T')[0];
+    if (!state) return;
+    state.tempData.date = tomorrow;
+    await safeSend(chatId, tSync(lang, 'enter_time'), { reply_markup: getTimeSlotsKeyboard(lang) });
+  }
+  else if (data === 'sched_date_calendar') {
+    const now = getEthiopiaNow();
+    await safeSend(chatId, tSync(lang, 'enter_date'), { reply_markup: getCalendarKeyboard(now.getFullYear(), now.getMonth(), lang) });
+  }
+  else if (data.startsWith('cal_nav_')) {
+    const parts = data.split('_'); // cal_nav_year_month
+    await bot.editMessageReplyMarkup(getCalendarKeyboard(parseInt(parts[2]), parseInt(parts[3]), lang), { chat_id: chatId, message_id: query.message.message_id });
+  }
+  else if (data.startsWith('cal_select_')) {
+    const date = data.replace('cal_select_', '');
+    if (!state) return;
+    state.tempData.date = date;
+    await safeSend(chatId, tSync(lang, 'enter_time'), { reply_markup: getTimeSlotsKeyboard(lang) });
+  }
+  else if (data.startsWith('time_select_')) {
+    const time = data.replace('time_select_', '');
+    if (!state) return;
+    await createVideoSession(chatId, state.tempData.date, time);
+  }
+  else if (data === 'time_custom') {
+    if (!state) return;
+    setState(chatId, 'sched_custom_time', null, state.tempData);
+    await safeSend(chatId, tSync(lang, 'enter_custom_time'));
   }
 
   // Mentees
@@ -1182,7 +1344,7 @@ bot.on('callback_query', async (query) => {
     await safeSend(chatId, tSync(lang, 'help_text'));
   }
 
-  await bot.answerCallbackQuery(query.id).catch(() => {});
+  await bot.answerCallbackQuery(query.id).catch(() => { });
 });
 
 // ─── Scheduler ────────────────────────────────────────────────────────────────
