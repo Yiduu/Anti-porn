@@ -986,15 +986,28 @@ bot.on('message', async (msg) => {
     }
     if (state.step === 'awaiting_mentor_about') {
       const about = text.trim();
+
+      // Validation
+      if (!state.tempData.sex || !state.tempData.educational_background || !about) {
+        console.error('[Mentor Application] Missing fields:', state.tempData);
+        await safeSend(chatId, '❌ Missing information. Please start over with /apply.');
+        clearState(chatId);
+        return showMainMenu(chatId);
+      }
+
       const { error } = await supabase.from('mentor_applications').insert({
         telegram_id: chatId, 
         sex: state.tempData.sex,
         educational_background: state.tempData.educational_background,
         about_me: about,
-        status: 'pending', submitted_at: new Date().toISOString()
+        status: 'pending', 
+        submitted_at: new Date().toISOString()
       });
-      if (error) await safeSend(chatId, await t(chatId, 'application_error'));
-      else {
+
+      if (error) {
+        console.error('[Mentor Application] Insert error:', error);
+        await safeSend(chatId, await t(chatId, 'application_error'));
+      } else {
         await safeSend(chatId, await t(chatId, 'application_submitted'));
         const adminIds = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_CHAT_ID;
         if (adminIds) {
