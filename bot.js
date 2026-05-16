@@ -597,12 +597,24 @@ async function handleDailyVerse(chatId) {
 
 async function handleStreakFlow(chatId) {
   const lang = await getUserLang(chatId);
-  const [{ data: s }, { data: vs }] = await Promise.all([
+  let [{ data: s }, { data: vs }] = await Promise.all([
     supabase.from('bible_streaks').select('*').eq('telegram_id', chatId).single(),
     supabase.from('daily_verses').select('*').eq('is_active', true)
   ]);
+
   const v = vs?.[Math.floor(Date.now() / 86400000) % (vs?.length || 1)] || { reference: '...', text: '...' };
-  const today = new Date().toISOString().split('T')[0];
+  const now = getEthiopiaNow();
+  const today = now.toISOString().split('T')[0];
+  const yest = new Date(now);
+  yest.setDate(yest.getDate() - 1);
+  const yestStr = yest.toISOString().split('T')[0];
+
+  // Reset logic: if last read was before yesterday, streak is broken
+  if (s && s.last_read_date && s.last_read_date !== today && s.last_read_date !== yestStr) {
+    await supabase.from('bible_streaks').update({ current_streak: 0 }).eq('telegram_id', chatId);
+    s.current_streak = 0;
+  }
+
   const alreadyRead = s?.last_read_date === today;
 
   const text = tSync(lang, 'streak_display', {
@@ -621,13 +633,14 @@ async function handleStreakFlow(chatId) {
 
 async function markStreakAsRead(chatId) {
   const lang = await getUserLang(chatId);
-  const today = new Date().toISOString().split('T')[0];
+  const now = getEthiopiaNow();
+  const today = now.toISOString().split('T')[0];
   const { data: s } = await supabase.from('bible_streaks').select('*').eq('telegram_id', chatId).single();
 
   if (!s) {
     await supabase.from('bible_streaks').insert({ telegram_id: chatId, current_streak: 1, longest_streak: 1, last_read_date: today });
   } else if (s.last_read_date !== today) {
-    const yest = new Date(); yest.setDate(yest.getDate() - 1);
+    const yest = new Date(now); yest.setDate(yest.getDate() - 1);
     const consecutive = s.last_read_date === yest.toISOString().split('T')[0];
     const n = consecutive ? s.current_streak + 1 : 1;
     await supabase.from('bible_streaks').update({
@@ -670,6 +683,12 @@ async function readJournalEntry(chatId, id) {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
+function format12h(hour) {
+  const h = hour % 12 || 12;
+  const ampm = hour < 12 ? 'AM' : 'PM';
+  return `${h}:00 ${ampm}`;
+}
+
 async function showSettings(chatId) {
   const lang = await getUserLang(chatId);
   const [{ data: user }, { data: s }] = await Promise.all([
@@ -681,7 +700,7 @@ async function showSettings(chatId) {
     inline_keyboard: [
       [{ text: `🔔 ${tSync(lang, 'settings_verse_notif')}: ${s?.notif_verse ? tSync(lang, 'on') : tSync(lang, 'off')}`, callback_data: 'settings_toggle_notif_verse' }],
       [{ text: `🔔 ${tSync(lang, 'settings_msg_notif')}: ${s?.notif_messages ? tSync(lang, 'on') : tSync(lang, 'off')}`, callback_data: 'settings_toggle_notif_messages' }],
-      [{ text: `⏰ ${tSync(lang, 'settings_verse_time')}: ${s?.verse_time ?? 0}:00`, callback_data: 'settings_time' }],
+      [{ text: `⏰ ${tSync(lang, 'settings_verse_time')}: ${format12h(s?.verse_time ?? 0)}`, callback_data: 'settings_time' }],
       [{ text: `🌍 ${tSync(lang, 'settings_language')}: ${lang === 'en' ? 'EN' : 'አማ'}`, callback_data: 'settings_lang' }],
       [{ text: `📚 ${tSync(lang, 'settings_my_topics')}`, callback_data: 'settings_topics' }]
     ]
@@ -1019,10 +1038,20 @@ bot.on('message', async (msg) => {
     }
 
     if (state.step === 'set_verse_time') {
-      const h = parseInt(text);
-      if (isNaN(h) || h < 0 || h > 23) return safeSend(chatId, await t(chatId, 'invalid_hour'));
-      await supabase.from('user_settings').update({ verse_time: h }).eq('telegram_id', chatId);
-      await safeSend(chatId, await t(chatId, 'verse_time_set', { hour: h }));
+      const match = text.trim().match(/^(0?[1-9]|1[0-2]):([0-5][0-9])\s?(AM|PM)$/i);
+      let hour;
+      if (match) {
+        hour = parseInt(match[1]);
+        const ampm = match[3].toUpperCase();
+        if (ampm === 'PM' && hour < 12) hour += 12;
+        if (ampm === 'AM' && hour === 12) hour = 0;
+      } else {
+        hour = parseInt(text);
+        if (isNaN(hour) || hour < 0 || hour > 23) return safeSend(chatId, await t(chatId, 'invalid_hour'));
+      }
+      
+      await supabase.from('user_settings').update({ verse_time: hour }).eq('telegram_id', chatId);
+      await safeSend(chatId, await t(chatId, 'verse_time_set', { hour: format12h(hour) }));
       clearState(chatId); return showMainMenu(chatId);
     }
   }
@@ -1419,11 +1448,12 @@ bot.on('callback_query', async (query) => {
 // ─── Scheduler ────────────────────────────────────────────────────────────────
 
 setInterval(async () => {
-  const now = new Date();
-  if (now.getUTCMinutes() !== 0) return;
+  const now = getEthiopiaNow();
+  if (now.getMinutes() !== 0) return;
 
+  const currentHour = now.getHours();
   const { data: opted } = await supabase.from('user_settings')
-    .select('telegram_id, language').eq('notify_daily_verse', true).eq('verse_time', now.getUTCHours());
+    .select('telegram_id, language').eq('notify_daily_verse', true).eq('verse_time', currentHour);
   const { data: vs } = await supabase.from('daily_verses').select('*').eq('is_active', true);
   const v = vs?.[Math.floor(Date.now() / 86400000) % (vs?.length || 1)];
 
@@ -1438,6 +1468,22 @@ setInterval(async () => {
       await safeSend(u.telegram_id, text);
     }
   }
+}, 60 * 1000);
+
+// Background job to reset streaks at midnight Ethiopia time
+setInterval(async () => {
+  const now = getEthiopiaNow();
+  if (now.getHours() !== 0 || now.getMinutes() !== 0) return;
+
+  const yest = new Date(now);
+  yest.setDate(yest.getDate() - 1);
+  const yestStr = yest.toISOString().split('T')[0];
+
+  const { error } = await supabase.from('bible_streaks')
+    .update({ current_streak: 0 })
+    .lt('last_read_date', yestStr);
+  
+  if (!error) console.log('[Scheduler] Daily streak reset check completed.');
 }, 60 * 1000);
 
 // Mentor application review polling
