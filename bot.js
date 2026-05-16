@@ -754,7 +754,7 @@ async function acceptMentorship(mentorId, userId, topicId) {
   const mentorLang = await getUserLang(mentorId);
   const userLang = await getUserLang(userId);
 
-  // Check mentor capacity
+  // Verify mentor capacity
   const { data: mentor } = await supabase.from('users').select('max_mentees').eq('telegram_id', mentorId).single();
   const { data: current } = await supabase.from('mentorship_assignments').select('id').eq('mentor_id', mentorId).eq('is_active', true);
   if ((current?.length || 0) >= (mentor?.max_mentees || DEFAULT_MAX_MENTEES)) {
@@ -764,10 +764,26 @@ async function acceptMentorship(mentorId, userId, topicId) {
     return;
   }
 
-  await supabase.from('mentorship_assignments').insert({ mentor_id: mentorId, user_id: userId, topic_id: topicId, is_active: true });
+  // CRITICAL FIX: Ensure mentor_id is the mentor, user_id is the mentee
+  const { error } = await supabase.from('mentorship_assignments').insert({
+    mentor_id: mentorId,
+    user_id: userId,
+    topic_id: topicId,
+    is_active: true,
+    assigned_at: new Date().toISOString()
+  });
+
+  if (error) {
+    console.error('[Accept] Insert error:', error);
+    return;
+  }
+
   await supabase.from('mentorship_requests').update({ status: 'accepted' }).eq('mentor_id', mentorId).eq('user_id', userId);
   await safeSend(userId, tSync(userLang, 'mentorship_accepted'));
   await safeSend(mentorId, tSync(mentorLang, 'mentorship_accepted_mentor'));
+  
+  // Log success
+  console.log(`[Accept] Assignment created: mentor=${mentorId}, user=${userId}, topic=${topicId}`);
 }
 
 async function rejectMentorship(mentorId, userId) {
@@ -880,6 +896,25 @@ bot.on('message', async (msg) => {
         }
         return;
       }
+      if (command === '/repair_assignments') {
+        const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
+        if (user?.role !== 'admin') return;
+        
+        const { data: assignments } = await supabase.from('mentorship_assignments').select('*').eq('is_active', true);
+        let repaired = 0;
+        for (const ass of assignments || []) {
+          const [{ data: m }, { data: u }] = await Promise.all([
+            supabase.from('users').select('role').eq('telegram_id', ass.mentor_id).single(),
+            supabase.from('users').select('role').eq('telegram_id', ass.user_id).single()
+          ]);
+          
+          if (m?.role === 'user' && u?.role === 'mentor') {
+            await supabase.from('mentorship_assignments').update({ mentor_id: ass.user_id, user_id: ass.mentor_id }).eq('id', ass.id);
+            repaired++;
+          }
+        }
+        return safeSend(chatId, `✅ Repair complete. Fixed ${repaired} swapped assignments.`);
+      }
       if (command === '/reply') {
         const args = text.split(' ');
         if (args.length < 2) return safeSend(chatId, await t(chatId, 'reply_usage'));
@@ -933,15 +968,28 @@ bot.on('message', async (msg) => {
   if (textMatches('btn_verse')) return handleDailyVerse(chatId);
   if (textMatches('btn_settings')) return showSettings(chatId);
   if (textMatches('btn_my_mentees')) {
-    const { data: mentees } = await supabase.from('mentorship_assignments')
-      .select('user_id, users(anonymous_id), topics(name)').eq('mentor_id', chatId).eq('is_active', true);
-    if (!mentees?.length) return safeSend(chatId, tSync(lang, 'no_mentees'));
+    const { data: mentees, error } = await supabase.from('mentorship_assignments')
+      .select('user_id, topics(name)').eq('mentor_id', chatId).eq('is_active', true);
+    
+    if (error) { console.error('[My Mentees] Error:', error); return safeSend(chatId, 'Error loading mentees.'); }
+
+    if (!mentees?.length) {
+      // Check swapped (auto-repair attempt)
+      const { data: swapped } = await supabase.from('mentorship_assignments').select('id, mentor_id').eq('user_id', chatId).eq('is_active', true);
+      if (swapped?.length) {
+        await supabase.from('mentorship_assignments').update({ mentor_id: chatId, user_id: swapped[0].mentor_id }).eq('id', swapped[0].id);
+        return safeSend(chatId, '⚠️ Mentorship list repaired. Please click again.');
+      }
+      return safeSend(chatId, tSync(lang, 'no_mentees'));
+    }
+
     let textStr = `👥 *${tSync(lang, 'my_mentees_title')}*\n\n`;
     const buttons = [];
-    mentees.forEach(m => {
-      textStr += `👤 @${m.users.anonymous_id} (${m.topics?.name || '?'})\n`;
-      buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${m.users.anonymous_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
-    });
+    for (const m of mentees) {
+      const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', m.user_id).single();
+      textStr += `👤 @${u?.anonymous_id || m.user_id} (${m.topics?.name || '?'})\n`;
+      buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${u?.anonymous_id || m.user_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
+    }
     return safeSend(chatId, textStr, { reply_markup: { inline_keyboard: buttons } });
   }
   if (textMatches('btn_schedule')) {
@@ -1481,16 +1529,29 @@ bot.on('callback_query', async (query) => {
 
   // Mentees
   else if (data === 'menu_mentees') {
-    const { data: mentees } = await supabase.from('mentorship_assignments')
-      .select('user_id, users(anonymous_id), topics(name)').eq('mentor_id', chatId).eq('is_active', true);
-    if (!mentees?.length) return safeSend(chatId, tSync(lang, 'no_mentees'));
-    let text = `👥 *${tSync(lang, 'my_mentees_title')}*\n\n`;
+    const { data: mentees, error } = await supabase.from('mentorship_assignments')
+      .select('user_id, topics(name)').eq('mentor_id', chatId).eq('is_active', true);
+    
+    if (error) { console.error('[My Mentees] Error:', error); return bot.answerCallbackQuery(query.id, { text: 'Error loading mentees.' }); }
+
+    if (!mentees?.length) {
+      const { data: swapped } = await supabase.from('mentorship_assignments').select('id, mentor_id').eq('user_id', chatId).eq('is_active', true);
+      if (swapped?.length) {
+        await supabase.from('mentorship_assignments').update({ mentor_id: chatId, user_id: swapped[0].mentor_id }).eq('id', swapped[0].id);
+        return bot.answerCallbackQuery(query.id, { text: '⚠️ Repaired. Please try again.', show_alert: true });
+      }
+      return bot.answerCallbackQuery(query.id, { text: tSync(lang, 'no_mentees'), show_alert: true });
+    }
+
+    let textStr = `👥 *${tSync(lang, 'my_mentees_title')}*\n\n`;
     const buttons = [];
-    mentees.forEach(m => {
-      text += `👤 @${m.users.anonymous_id} (${m.topics?.name || '?'})\n`;
-      buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${m.users.anonymous_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
-    });
-    await safeSend(chatId, text, { reply_markup: { inline_keyboard: buttons } });
+    for (const m of mentees) {
+      const { data: u } = await supabase.from('users').select('anonymous_id').eq('telegram_id', m.user_id).single();
+      textStr += `👤 @${u?.anonymous_id || m.user_id} (${m.topics?.name || '?'})\n`;
+      buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${u?.anonymous_id || m.user_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
+    }
+    await safeSend(chatId, textStr, { reply_markup: { inline_keyboard: buttons } });
+    return bot.answerCallbackQuery(query.id);
   }
   else if (data.startsWith('end_mentorship_')) {
     const userId = data.replace('end_mentorship_', '');
