@@ -318,6 +318,7 @@ async function createVideoSession(chatId, date, time12h) {
     const menteeId = state.tempData.mentee_id ? parseInt(state.tempData.mentee_id) : null;
 
     const { data: sess, error } = await supabase.from('video_sessions').insert({
+      host_id: chatId,
       mentor_id: chatId,
       scheduled_at: scheduledAt.toISOString(),
       is_group: isGroup,
