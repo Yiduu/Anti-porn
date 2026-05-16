@@ -312,11 +312,13 @@ async function createVideoSession(chatId, date, time12h) {
 
   try {
     console.log(`[Scheduler] Creating session for ${chatId} at ${scheduledAt.toISOString()}`);
+    const roomName = Math.random().toString(36).substring(2, 10);
     const { data: sess, error } = await supabase.from('video_sessions').insert({
       mentor_id: chatId, 
       scheduled_at: scheduledAt.toISOString(),
-      type: state.tempData.type, 
+      type: state.tempData.type || 'private', 
       mentee_id: state.tempData.mentee_id || null, 
+      room_name: roomName,
       status: 'scheduled'
     }).select().single();
     
@@ -1149,6 +1151,7 @@ bot.on('message', async (msg) => {
       await supabase.from('user_settings').update({ verse_time: hour }).eq('telegram_id', chatId);
       await safeSend(chatId, await t(chatId, 'verse_time_set', { hour: format12h(hour) }));
       clearState(chatId); return showMainMenu(chatId);
+    }
   }
   
   // 🛡️ CHAT SHIELD: Only allow forwarding if NOT in a flow state
