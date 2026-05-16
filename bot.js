@@ -1149,11 +1149,11 @@ bot.on('message', async (msg) => {
       await supabase.from('user_settings').update({ verse_time: hour }).eq('telegram_id', chatId);
       await safeSend(chatId, await t(chatId, 'verse_time_set', { hour: format12h(hour) }));
       clearState(chatId); return showMainMenu(chatId);
-    }
   }
-
-  // Pure chat forwarding
-  const partnersInfo = await getActiveChatPartners(chatId);
+  
+  // 🛡️ CHAT SHIELD: Only allow forwarding if NOT in a flow state
+  if (!state || state.step === 'chat_active') {
+    const partnersInfo = await getActiveChatPartners(chatId);
   if (!partnersInfo) {
     const lang = await getUserLang(chatId);
     return safeSend(chatId, tSync(lang, 'no_active_mentor'), {
@@ -1178,6 +1178,7 @@ bot.on('message', async (msg) => {
   }
 
   if (targetId) await forwardMessage(chatId, targetId, text.trim());
+  }
 });
 
 // ─── Callback Handler ─────────────────────────────────────────────────────────
