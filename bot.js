@@ -134,6 +134,10 @@ async function touchActivity(chatId) {
 // ─── Main Menu ────────────────────────────────────────────────────────────────
 
 async function showMainMenu(chatId, customText) {
+  return showPersistentMenu(chatId, customText);
+}
+
+async function showPersistentMenu(chatId, customText) {
   const [{ data: user }, lang] = await Promise.all([
     supabase.from('users').select('role, anonymous_id').eq('telegram_id', chatId).single(),
     getUserLang(chatId)
@@ -141,31 +145,25 @@ async function showMainMenu(chatId, customText) {
   const role = user?.role || 'user';
   const menuText = customText || tSync(lang, 'menu_welcome', { nick: user?.anonymous_id || '' });
 
-  const keyboard = { inline_keyboard: [] };
-  keyboard.inline_keyboard.push([
-    { text: tSync(lang, 'btn_find_mentor'), callback_data: 'menu_mentors' },
-    { text: tSync(lang, 'btn_my_chat'), callback_data: 'menu_chat' }
-  ]);
-  keyboard.inline_keyboard.push([
-    { text: tSync(lang, 'btn_streak'), callback_data: 'menu_streak' },
-    { text: tSync(lang, 'btn_journal'), callback_data: 'menu_journal' }
-  ]);
-  keyboard.inline_keyboard.push([
-    { text: tSync(lang, 'btn_verse'), callback_data: 'menu_verse' },
-    { text: tSync(lang, 'btn_settings'), callback_data: 'menu_settings' }
-  ]);
+  const kb = [
+    [tSync(lang, 'btn_find_mentor'), tSync(lang, 'btn_my_chat')],
+    [tSync(lang, 'btn_streak'), tSync(lang, 'btn_journal')],
+    [tSync(lang, 'btn_verse'), tSync(lang, 'btn_settings')]
+  ];
 
   if (role === 'mentor' || role === 'admin') {
-    keyboard.inline_keyboard.push([
-      { text: tSync(lang, 'btn_my_mentees'), callback_data: 'menu_mentees' },
-      { text: tSync(lang, 'btn_schedule'), callback_data: 'menu_schedule' }
-    ]);
+    kb.push([tSync(lang, 'btn_my_mentees'), tSync(lang, 'btn_schedule')]);
   } else {
-    keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_apply_mentor'), callback_data: 'menu_apply' }]);
+    kb.push([tSync(lang, 'btn_apply_mentor')]);
   }
 
-  keyboard.inline_keyboard.push([{ text: tSync(lang, 'btn_help'), callback_data: 'menu_help' }]);
-  await safeSend(chatId, menuText, { reply_markup: keyboard });
+  await safeSend(chatId, menuText, {
+    reply_markup: {
+      keyboard: kb,
+      resize_keyboard: true,
+      one_time_keyboard: false
+    }
+  });
 }
 
 // ─── Topic Picker ─────────────────────────────────────────────────────────────
@@ -860,6 +858,61 @@ bot.on('message', async (msg) => {
       }
       return;
     }
+  }
+
+  // ─── Persistent Menu Routing ────────────────────────────────────────────────
+  const textMatches = (key) => text === tSync(lang, key);
+
+  if (textMatches('btn_find_mentor')) {
+    const { data: ut } = await supabase.from('user_topics').select('topic_id, topics(name)').eq('telegram_id', chatId);
+    if (!ut?.length) return safeSend(chatId, tSync(lang, 'no_topics_set'));
+    const buttons = ut.map(t => [{ text: t.topics.name, callback_data: `search_topic_${t.topic_id}` }]);
+    return safeSend(chatId, tSync(lang, 'choose_topic_search'), { reply_markup: { inline_keyboard: buttons } });
+  }
+  if (textMatches('btn_my_chat')) return safeSend(chatId, tSync(lang, 'chat_instructions'));
+  if (textMatches('btn_streak')) return handleStreakFlow(chatId);
+  if (textMatches('btn_journal')) {
+    return safeSend(chatId, `✏️ *${tSync(lang, 'journal_title')}*`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'btn_new_entry'), callback_data: 'journal_new' }],
+          [{ text: tSync(lang, 'btn_view_entries'), callback_data: 'journal_view_0' }]
+        ]
+      }
+    });
+  }
+  if (textMatches('btn_verse')) return handleDailyVerse(chatId);
+  if (textMatches('btn_settings')) return showSettings(chatId);
+  if (textMatches('btn_my_mentees')) {
+    const { data: mentees } = await supabase.from('mentorship_assignments')
+      .select('user_id, users(anonymous_id), topics(name)').eq('mentor_id', chatId).eq('is_active', true);
+    if (!mentees?.length) return safeSend(chatId, tSync(lang, 'no_mentees'));
+    let textStr = `👥 *${tSync(lang, 'my_mentees_title')}*\n\n`;
+    const buttons = [];
+    mentees.forEach(m => {
+      textStr += `👤 @${m.users.anonymous_id} (${m.topics?.name || '?'})\n`;
+      buttons.push([{ text: `❌ ${tSync(lang, 'btn_end')} @${m.users.anonymous_id}`, callback_data: `end_mentorship_${m.user_id}` }]);
+    });
+    return safeSend(chatId, textStr, { reply_markup: { inline_keyboard: buttons } });
+  }
+  if (textMatches('btn_schedule')) {
+    setState(chatId, 'sched_type', null, { type: 'group' });
+    return safeSend(chatId, tSync(lang, 'select_session_type'), {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: tSync(lang, 'session_private'), callback_data: 'sched_type_private' }],
+          [{ text: tSync(lang, 'session_group'), callback_data: 'sched_type_group' }]
+        ]
+      }
+    });
+  }
+  if (textMatches('btn_apply_mentor')) {
+    const { data: user } = await supabase.from('users').select('role').eq('telegram_id', chatId).single();
+    if (user?.role === 'mentor' || user?.role === 'admin') return safeSend(chatId, tSync(lang, 'already_mentor'));
+    const { data: ex } = await supabase.from('mentor_applications').select('id').eq('telegram_id', chatId).eq('status', 'pending').single();
+    if (ex) return safeSend(chatId, tSync(lang, 'application_pending'));
+    setState(chatId, 'awaiting_mentor_q1');
+    return safeSend(chatId, tSync(lang, 'apply_q1'));
   }
 
   // Flow Steps
