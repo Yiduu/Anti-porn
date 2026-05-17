@@ -211,27 +211,46 @@ module.exports = function sessionRoutes(supabase, requireAuth, io, onlineUsers) 
   router.delete('/my', requireAuth, async (req, res) => {
     const { id: telegram_id } = req.telegramUser;
     console.log('[Sessions] Clearing history for:', telegram_id);
-    
-    // Find sessions that have ended
-    const { data: ended } = await supabase
-      .from('video_sessions')
-      .select('id')
-      .in('status', ['ended', 'completed', 'cancelled', 'expired']);
-    
-    if (!ended?.length) {
-      console.log('[Sessions] No ended sessions found.');
+
+    // Step 1: Find all session IDs this user participated in
+    const { data: participations, error: partErr } = await supabase
+      .from('session_participants')
+      .select('session_id')
+      .eq('telegram_id', telegram_id);
+
+    if (partErr) return res.status(500).json({ error: partErr.message });
+    if (!participations?.length) {
+      console.log('[Sessions] User has no session participation records.');
       return res.json({ success: true, count: 0 });
     }
-    
-    const ids = ended.map(s => s.id);
-    const { data: deleted, error } = await supabase
+
+    const participatedIds = participations.map(p => p.session_id);
+
+    // Step 2: Of those, find which sessions have an ended status
+    const { data: endedSessions, error: sessErr } = await supabase
+      .from('video_sessions')
+      .select('id')
+      .in('id', participatedIds)
+      .in('status', ['ended', 'completed', 'cancelled', 'expired']);
+
+    if (sessErr) return res.status(500).json({ error: sessErr.message });
+    if (!endedSessions?.length) {
+      console.log('[Sessions] No ended sessions found for user:', telegram_id);
+      return res.json({ success: true, count: 0 });
+    }
+
+    const endedIds = endedSessions.map(s => s.id);
+    console.log(`[Sessions] Removing user from ${endedIds.length} ended session(s).`);
+
+    // Step 3: Delete participant rows for those ended sessions
+    const { data: deleted, error: delErr } = await supabase
       .from('session_participants')
       .delete()
       .eq('telegram_id', telegram_id)
-      .in('session_id', ids)
+      .in('session_id', endedIds)
       .select();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (delErr) return res.status(500).json({ error: delErr.message });
     res.json({ success: true, count: deleted?.length || 0 });
   });
 
