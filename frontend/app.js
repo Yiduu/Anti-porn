@@ -122,15 +122,36 @@ function toggleTheme() {
 setTheme(localStorage.getItem('theme') || 'dark');
 
 // ─── Init ─────────────────────────────────────────────────────
+let isConnecting = false;
 async function init() {
+  if (isConnecting) return;
+  isConnecting = true;
+
   const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
+
+  // Reset loading screen UI in case of retry
+  const loadingScreen = $('loadingScreen');
+  const spinner = $('loadingSpinner');
+  const txt = $('loadingText');
+  const retryContainer = $('retryContainer');
+
+  if (loadingScreen) {
+    loadingScreen.classList.remove('hidden');
+    if (spinner) spinner.style.display = 'block';
+    if (txt) {
+      txt.textContent = 'Securing connection to recovery network... 🙏';
+      txt.style.color = 'var(--text3)';
+    }
+    if (retryContainer) retryContainer.classList.add('hidden');
+  }
 
   try {
     const data = await apiFetch('/api/auth/me');
     window.ADMIN_ID = data.admin_id;
     if (!data.registered) {
       showOnboarding();
+      loadingScreen?.classList.add('hidden');
     } else {
       currentUser = data.user;
       if (currentUser.is_banned) {
@@ -139,14 +160,30 @@ async function init() {
       }
       startApp();
       handleDeepLink();
+      loadingScreen?.classList.add('hidden');
     }
   } catch (e) {
-    console.error(e);
-    showToast('Connection error', 'error');
-    showOnboarding();
+    console.error('[Init] Connection failed:', e);
+    
+    // Check if error is actual registration failure or server unreachable
+    if (e.message && (e.message.includes('401') || e.message.includes('initData'))) {
+      // Missing or invalid auth credentials
+      showToast('Authentication failed. Please reopen from Telegram.', 'error');
+      if (txt) txt.textContent = '🔒 Secure Authorization Required. Please close and reopen the app.';
+    } else {
+      // Server down, sleeping, or database network error
+      showToast('Connection offline. Server might be waking up...', 'warning');
+      if (txt) {
+        txt.innerHTML = '<span style="color:var(--warn);font-weight:bold;">Connection Offline</span><br><br>The secure server is taking a moment to wake up.<br>Please wait or try manually retrying below.';
+        txt.style.color = 'var(--text2)';
+      }
+      if (retryContainer) retryContainer.classList.remove('hidden');
+    }
+    
+    if (spinner) spinner.style.display = 'none';
+  } finally {
+    isConnecting = false;
   }
-
-  $('loadingScreen')?.classList.add('hidden');
 }
 
 function handleDeepLink() {
