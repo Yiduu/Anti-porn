@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Session | Recovery Platform</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at top right, #1a1a1a, #0d0d0d);
+      color: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .session-card {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(212, 175, 55, 0.15);
+      border-radius: 20px;
+      padding: 40px;
+      width: 90%;
+      max-width: 500px;
+      text-align: center;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      transition: all 0.3s ease;
+    }
+    .session-card:hover {
+      border-color: rgba(212, 175, 55, 0.4);
+      box-shadow: 0 8px 32px 0 rgba(212, 175, 55, 0.1);
+    }
+    .gold-accent {
+      color: #D4AF37;
+      font-weight: 700;
+    }
+    .title {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .meta {
+      font-size: 14px;
+      color: #aaaaaa;
+      margin-bottom: 24px;
+    }
+    .join-btn {
+      background: linear-gradient(135deg, #D4AF37 0%, #AA7C11 100%);
+      color: #000000;
+      border: none;
+      padding: 14px 28px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+    }
+    .join-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(212, 175, 55, 0.5);
+    }
+    .join-btn:active {
+      transform: translateY(0);
+    }
+    .error-card {
+      border-color: rgba(220, 53, 69, 0.3);
+    }
+    .error-card .gold-accent {
+      color: #dc3545;
+    }
+    #video-container {
+      width: 100%;
+      height: 100vh;
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      background: #000;
+      z-index: 10000;
+    }
+    .leave-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 10001;
+      background: rgba(220, 53, 69, 0.85);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      backdrop-filter: blur(5px);
+      transition: all 0.2s;
+    }
+    .leave-btn:hover {
+      background: #dc3545;
+      transform: scale(1.05);
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .status-scheduled {
+      background: rgba(212, 175, 55, 0.15);
+      color: #D4AF37;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+    .status-active {
+      background: rgba(40, 167, 69, 0.15);
+      color: #28a745;
+      border: 1px solid rgba(40, 167, 69, 0.3);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.8; }
+      50% { opacity: 1; }
+      100% { opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+
+  {% if error %}
+  <div class="session-card error-card">
+    <div class="status-badge" style="background: rgba(220,53,69,0.15); color: #dc3545; border: 1px solid rgba(220,53,69,0.3);">Error</div>
+    <div class="title">Could Not Load Session</div>
+    <p class="meta">{{ error }}</p>
+    <button class="join-btn" style="background: #333; color: #fff; box-shadow: none;" onclick="closeWebApp()">Close App</button>
+  </div>
+  {% else %}
+  <div class="session-card" id="lobby">
+    <div class="status-badge status-{{ session_status }}">{{ session_status }}</div>
+    <div class="title">{{ session_title }}</div>
+    <p class="meta">Hosted by: <span class="gold-accent">{{ host_name }}</span></p>
+    
+    <div style="background: rgba(255,255,255,0.02); border-radius: 12px; padding: 20px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.05)">
+      <div style="font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Scheduled Time</div>
+      <div style="font-size: 18px; font-weight: 500;">{{ scheduled_at }}</div>
+    </div>
+
+    <button class="join-btn" id="join-btn" onclick="startSession()">Join Meeting</button>
+  </div>
+  {% endif %}
+
+  <div id="video-container">
+    <button class="leave-btn" onclick="leaveSession()">Leave Meeting</button>
+    <div id="jitsi-iframe-container" style="width: 100%; height: 100%;"></div>
+  </div>
+
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    function closeWebApp() {
+      if (tg) {
+        tg.close();
+      } else {
+        window.close();
+      }
+    }
+
+    async function startSession() {
+      const joinBtn = document.getElementById('join-btn');
+      joinBtn.disabled = true;
+      joinBtn.innerText = 'Connecting...';
+
+      try {
+        const initData = tg?.initData || '';
+        const telegramId = tg?.initDataUnsafe?.user?.id || '';
+        
+        const headers = {
+          'Content-Type': 'application/json',
+          'x-telegram-init-data': initData,
+          'x-telegram-id': telegramId.toString()
+        };
+
+        const res = await fetch(`/api/sessions/{{ session_id }}/join`, { headers });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Failed to join session');
+        }
+
+        const data = await res.json();
+        
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('video-container').style.display = 'block';
+
+        const options = {
+          roomName: data.room_name,
+          width: '100%',
+          height: '100%',
+          parentNode: document.getElementById('jitsi-iframe-container'),
+          userInfo: { displayName: data.display_name },
+          configOverwrite: {
+            startWithAudioMuted: true,
+            startWithVideoMuted: true,
+            enableClosePage: false,
+            disableDeepLinking: true,
+            ...(data.room_password ? { password: data.room_password } : {})
+          },
+          interfaceConfigOverwrite: {
+            TOOLBAR_BUTTONS: ['microphone', 'camera', 'chat', 'raisehand', 'fullscreen', 'tileview', 'hangup'],
+            SHOW_JITSI_WATERMARK: false,
+            MOBILE_APP_PROMO: false
+          },
+          ...(data.jitsi_token ? { jwt: data.jitsi_token } : {})
+        };
+
+        window.jitsiApi = new JitsiMeetExternalAPI('meet.jit.si', options);
+        
+        window.jitsiApi.addEventListener('videoConferenceLeft', () => {
+          leaveSession();
+        });
+
+        window.jitsiApi.addEventListener('passwordRequired', () => {
+          if (data.room_password) {
+            window.jitsiApi.executeCommand('password', data.room_password);
+          }
+        });
+
+      } catch (err) {
+        alert(err.message);
+        joinBtn.disabled = false;
+        joinBtn.innerText = 'Join Meeting';
+      }
+    }
+
+    function leaveSession() {
+      if (window.jitsiApi) {
+        try {
+          window.jitsiApi.dispose();
+        } catch (e) {
+          console.error(e);
+        }
+        window.jitsiApi = null;
+      }
+      document.getElementById('video-container').style.display = 'none';
+      document.getElementById('lobby').style.display = 'block';
+      
+      const joinBtn = document.getElementById('join-btn');
+      joinBtn.disabled = false;
+      joinBtn.innerText = 'Join Meeting';
+      
+      closeWebApp();
+    }
+  </script>
+</body>
+</html>
